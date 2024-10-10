@@ -28,7 +28,7 @@ class Wheelbase
     float getSupplyVoltage() const;
     float getLimitVoltage() const;
 
-    void wheelStop();
+    void wheelStop( uint8_t select );
     void wheelClockwise( uint8_t select, uint8_t power );
     void wheelAntiClockwise( uint8_t select, uint8_t power );
 

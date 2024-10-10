@@ -1,6 +1,7 @@
 #include "isd-dev-pinout.hpp"
 #include "WheelsControl.hpp"
 #include "SandersFancyDebugger.hpp"
+#include "SerialCommunication.hpp"
 
 FancyDebugger debugger;
 
@@ -32,5 +33,5 @@ void setup()
   vTaskDelay(500 / portTICK_PERIOD_MS);
 }
 
-void loop() {}
+void loop(){}
 

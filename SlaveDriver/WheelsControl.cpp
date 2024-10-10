@@ -28,9 +28,11 @@ float Wheelbase::getLimitVoltage() const
   return _v_limit;
 }
 
-void Wheelbase::wheelStop()
+void Wheelbase::wheelStop( uint8_t select )
 {
   
+  for(int i=2;i>=0;i--) digitalWrite(_pin[select][i], LOW);
+
 }
 
 void Wheelbase::wheelClockwise( uint8_t select, uint8_t power )
@@ -49,7 +51,7 @@ void Wheelbase::wheelAntiClockwise( uint8_t select, uint8_t power )
 
 void Wheelbase::stop()
 {
-  for(int i=0;i<2;i++){ for(int j=0;j<2;j++){ digitalWrite(_pin[i][j], LOW); } }
+  for(int i=0;i<2;i++) wheelStop(i);
 }
 
 void Wheelbase::foward(uint8_t power)
@@ -79,12 +81,7 @@ void Wheelbase::right(uint8_t power)
 bool Wheelbase::init()
 { 
 
-  Serial.println("INIT\t||\tStart Init.");
-
   for(int i=0;i<2;i++){ for(int j=0;j<2;j++){ pinMode(_pin[i][j], OUTPUT); } }
-
-  Serial.println("INIT\t||\tWheels Init completed.");
-
   stop();
 
 }
