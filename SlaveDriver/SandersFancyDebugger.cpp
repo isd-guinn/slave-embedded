@@ -1,28 +1,31 @@
 #include "SandersFancyDebugger.hpp"
 
-FancyDebugger::FancyDebugger()
-{
-  set(&Serial);
-}
-
 FancyDebugger::FancyDebugger( HardwareSerial* serial_ptr )
 {
   set(serial_ptr);
 }
+
+// void FancyDebugger::Init()
+// {
+//   _serial_ptr->begin(115200);
+// }
 
 
 void FancyDebugger::msg( String prefix, String content )
 {
   _serial_ptr->print( prefix );
   _serial_ptr->print( "\t||\t" );
-  _serial_ptr->println( content );
+  _serial_ptr->print( content );
+  _serial_ptr->print( '\n' );
 }
 
 void FancyDebugger::err( String content )
 {
   _serial_ptr->print( "ERROR" );
   _serial_ptr->print( "\t||\t" );
-  _serial_ptr->println( content );
+  _serial_ptr->print( content );
+  _serial_ptr->print( '\n' );
+
 }
 
 bool FancyDebugger::boolReccursiveInit( bool op, String op_name, long timeout)

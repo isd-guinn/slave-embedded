@@ -9,9 +9,9 @@ class FancyDebugger
     HardwareSerial* _serial_ptr;
 
   public:
-    FancyDebugger();
     FancyDebugger( HardwareSerial* serial_ptr );
 
+    void Init();
     void msg( String prefix, String content );
     void err( String content );
     bool boolReccursiveInit( bool op, String op_name, long timeout); 

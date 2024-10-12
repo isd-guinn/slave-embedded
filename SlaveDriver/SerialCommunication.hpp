@@ -1,3 +1,4 @@
+#include "HardwareSerial.h"
 #ifndef SERIALCOMMUNICATION_HPP
 #define SERIALCOMMUNICATION_HPP
 
@@ -40,24 +41,25 @@ class SerialInterface
     HardwareSerial* _serial_ptr;
     uint8_t _start_bit;
     uint8_t _pocket_size;
-    uint8_t _rx_buffer[POCKET_SIZE];
-    uint8_t _tx_buffer[POCKET_SIZE];
+    uint8_t _rx_buffer;
+    uint8_t _tx_buffer;
 
   public:
-    SerialInterface();
-    SerialInterface( uint8_t startbit, HardwareSerial* serial_ptr, uint8_t pocket_size );
+    SerialInterface( HardwareSerial* serial_ptr, uint8_t pocket_size, uint8_t startbit );
 
     uint8_t getStartBit() const;
     uint8_t getPocketSize() const;
-    uint8_t getRxBuffer( uint8_t bit_num ) const;
-    uint8_t getTxBuffer( uint8_t bit_num ) const;
+    uint8_t getRxBuffer() const;
+    uint8_t getTxBuffer() const;
 
     void Init();
+    uint8_t available();
+    uint8_t read();
 
     uint8_t getCheckSum( uint8_t* data, uint8_t size );
     bool checkCheckSum( uint8_t* data, uint8_t size );
 
-    void set( uint8_t startbit, HardwareSerial* serial_ptr, uint8_t pocket_size);
+    void set( HardwareSerial* serial_ptr, uint8_t pocket_size, uint8_t startbit );
 
 };
 
