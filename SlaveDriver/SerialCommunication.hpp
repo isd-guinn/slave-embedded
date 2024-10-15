@@ -7,11 +7,33 @@
 /*  SerialCommunation Protocol
     For RPI to MCU   */
 /*  */
+
 /*  
-    Pocket:   { 0x3E  0x00  0x00  0x00  0x00  }
+    MOSI:
+      Virtual Estop
+      FOC Modes (Disengage/ Engage)
+      Control Mode (Angle , Speed)
+      Target angle / current angle
+      Target speed(x,y) / current speed (x,y)
+      Vacuum Mode ( I,O )
+
+    MOSI Pocket:   { 0x3E  0x00  0x00  0x00  0x00  }
               {  '>'   ' '   ' '   ' '   ' '  }
 
-    |     1st Bit     |     2nd Bit     |     3rd Bit     |     4th Bit     |     5th Bit     |
+    |     1st Byte     |     2nd Byte     |     3rd Byte     |     4th Byte     |     5th Btye     |
+    |     StartBit    |     EStopBit    |     WBDirBit    |     WBPwrBit    |     CheckSum    |
+*/
+
+/*  
+    MISO
+      Debug msg
+      FOC Angles (by 2)
+
+
+    MISO Pocket:   { 0x3E  0x00  0x00  0x00  0x00  }
+              {  '>'   ' '   ' '   ' '   ' '  }
+
+    |     1st Byte     |     2nd Byte     |     3rd Byte     |     4th Byte     |     5th Btye     |
     |     StartBit    |     EStopBit    |     WBDirBit    |     WBPwrBit    |     CheckSum    |
 */
 
@@ -41,25 +63,36 @@ class SerialInterface
     HardwareSerial* _serial_ptr;
     uint8_t _start_bit;
     uint8_t _pocket_size;
-    uint8_t _rx_buffer;
-    uint8_t _tx_buffer;
+
+    uint8_t* _rx_buffer_ptr;
+    uint8_t _rx_counter;
+
+    uint8_t* _tx_buffer_ptr;
+    uint8_t _tx_counter;
 
   public:
     SerialInterface( HardwareSerial* serial_ptr, uint8_t pocket_size, uint8_t startbit );
+    ~SerialInterface();
 
     uint8_t getStartBit() const;
     uint8_t getPocketSize() const;
-    uint8_t getRxBuffer() const;
-    uint8_t getTxBuffer() const;
+    uint8_t* getRxBufferPtr() const;
+    uint8_t getRxCounter() const;
+    uint8_t* getTxBufferPtr() const;
 
     void Init();
     uint8_t available();
-    uint8_t read();
+
+    uint8_t rxPush();
+    void rxClear( bool keepStartBit );
 
     uint8_t getCheckSum( uint8_t* data, uint8_t size );
     bool checkCheckSum( uint8_t* data, uint8_t size );
 
-    void set( HardwareSerial* serial_ptr, uint8_t pocket_size, uint8_t startbit );
+    bool onRecievedCommand();
+
+
+    void set( HardwareSerial* serial_ptr,  uint8_t pocket_size, uint8_t startbit , uint8_t* rx_buffer_ptr, uint8_t* tx_buffer_ptr );
 
 };
 
