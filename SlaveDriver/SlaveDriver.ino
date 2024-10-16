@@ -1,8 +1,8 @@
-//#include "isd-dev-pinout.hpp"
+#include "isd-dev-pinout.hpp"
 #include "WheelsControl.hpp"
 #include "SerialCommunication.hpp"
 
-#define LED_BUILTIN 48
+//#define LED_BUILTIN 48
 // #define LED_BUILTIN 2
 
 HardwareSerial MasterSerial(0);
@@ -21,6 +21,10 @@ uint32_t xEchoBuffer_stack = 2048;
 TaskHandle_t xEchoBuffer_handle = NULL;
 void xEchoBuffer( void* pv );
 
+uint32_t xVacuum_stack = 2048;
+TaskHandle_t xVacuum_handle = NULL;
+void xVacuum( void* pv );
+
 /*
     Blinking
 */
@@ -29,9 +33,9 @@ void xBlinking( void* pv )
 
   for( ; ; )
   {
-    // digitalWrite(LED_BUILTIN,LOW);
+    digitalWrite(LED_BUILTIN,LOW);
     vTaskDelay(500 / portTICK_PERIOD_MS);
-    // digitalWrite(LED_BUILTIN,HIGH);
+    digitalWrite(LED_BUILTIN,HIGH);
     vTaskDelay(500 / portTICK_PERIOD_MS);
   }
 
@@ -95,37 +99,71 @@ void xEchoBuffer( void* pv )
   }
 }
 
+void xVacuum( void* pv )
+{
+  for( ; ; )
+  { 
+    Serial.println("Set speed");
+    ledcWrite(SERVO0_PIN,329);
+    ledcWrite(SERVO1_PIN,329);
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+  }
+}
+
+
 void setup() 
 {
-  // Serial.begin(115200);
-  MasterSerial.begin(115200, SERIAL_8N1, 44, 43); //ESP32 Dev kit
+  Serial.begin(115200);
+  //MasterSerial.begin(115200, SERIAL_8N1, 44, 43); //ESP32 Dev kit
   // MasterSerial.begin(115200, SERIAL_8N1, 3, 1); //ESP32S
 
 
+
+  //Vacuum INIT Begin
+  while(ledcAttach(SERVO0_PIN, 50, 12)==false){
+    Serial.println("Attaching...");
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+  }
+
+  while(ledcAttach(SERVO1_PIN, 50, 12)==false){
+    Serial.println("Attaching...");
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+  }
+
+  Serial.println("Init stage 2");
+  ledcWrite(SERVO0_PIN,410);
+  ledcWrite(SERVO1_PIN,410);
+  vTaskDelay(2000 / portTICK_PERIOD_MS);
+  Serial.println("Init stage 3");
+  ledcWrite(SERVO0_PIN,308);
+  ledcWrite(SERVO1_PIN,308);
+  vTaskDelay(2000 / portTICK_PERIOD_MS);
+  //Vacuum INIT End
+
+
+
   //Serial.println("INIT\t||\tBlinking");
-  MasterSerial.write('c');
-  MasterSerial.write('\n');
 
   pinMode(LED_BUILTIN,OUTPUT);
   digitalWrite(LED_BUILTIN,LOW);
 
   //Serial.println("DONE\t||\tBlinking");
 
-  xTaskCreatePinnedToCore(  xEchoBuffer,
-                            "Blinking",
-                            xEchoBuffer_stack,
-                            NULL,
-                            1,
-                            &xEchoBuffer_handle,
-                            1 );
+  // xTaskCreatePinnedToCore(  xEchoBuffer,
+  //                           "Blinking",
+  //                           xEchoBuffer_stack,
+  //                           NULL,
+  //                           1,
+  //                           &xEchoBuffer_handle,
+  //                           1 );
 
-  xTaskCreatePinnedToCore(  xWriteBuffer,
-                            "Blinking",
-                            xWriteBuffer_stack,
-                            NULL,
-                            1,
-                            &xWriteBuffer_handle,
-                            1 );
+  // xTaskCreatePinnedToCore(  xWriteBuffer,
+  //                           "Blinking",
+  //                           xWriteBuffer_stack,
+  //                           NULL,
+  //                           1,
+  //                           &xWriteBuffer_handle,
+  //                           1 );
 
   xTaskCreatePinnedToCore(  xBlinking,
                             "Blinking",
@@ -133,6 +171,14 @@ void setup()
                             NULL,
                             1,
                             &xBlinking_handle,
+                            1 );
+
+  xTaskCreatePinnedToCore(  xVacuum,
+                            "Vacuum",
+                            xVacuum_stack,
+                            NULL,
+                            1,
+                            &xVacuum_handle,
                             1 );
 
   vTaskDelay(500 / portTICK_PERIOD_MS);
