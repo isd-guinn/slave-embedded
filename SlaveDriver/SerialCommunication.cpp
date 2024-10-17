@@ -1,12 +1,12 @@
 #include "SerialCommunication.hpp"
 
-SerialInterface::SerialInterface( HardwareSerial* serial_ptr, uint8_t pocket_size, uint8_t startbit = '>')
+SerialInterface::SerialInterface( HardwareSerial* serial_ptr, uint8_t rx_packet_size, uint8_t tx_packet_size, uint8_t startbit = '>')
 { 
-  uint8_t* rx_buffer_ptr = new uint8_t[pocket_size];
+  uint8_t* rx_buffer_ptr = new uint8_t[rx_packet_size];
   _rx_counter = 0;
-  uint8_t* tx_buffer_ptr = new uint8_t[pocket_size];
+  uint8_t* tx_buffer_ptr = new uint8_t[tx_packet_size];
   _tx_counter = 0;
-  set( serial_ptr, pocket_size, startbit, rx_buffer_ptr, tx_buffer_ptr);
+  set( serial_ptr, rx_packet_size, tx_packet_size, startbit, rx_buffer_ptr, tx_buffer_ptr);
 };
 
 SerialInterface::~SerialInterface()
@@ -21,9 +21,14 @@ uint8_t SerialInterface::getStartBit() const
   return _start_bit;
 };
 
-uint8_t SerialInterface::getPocketSize() const
+uint8_t SerialInterface::getRxPocketSize() const
 {
-  return _pocket_size;
+  return _rx_packet_size;
+};
+
+uint8_t SerialInterface::getTxPocketSize() const
+{
+  return _tx_packet_size;
 };
 
 
@@ -42,19 +47,11 @@ uint8_t* SerialInterface::getTxBufferPtr() const
   return _tx_buffer_ptr;
 };
 
-void SerialInterface::Init(){};
-
-uint8_t SerialInterface::available()
-{
-  return _serial_ptr->available();
-}
-
 uint8_t SerialInterface::rxPush( )
 {
   uint8_t byte = _serial_ptr->read();
   _rx_buffer_ptr[_rx_counter++] = byte;
   return byte;
-
 }
 
 void SerialInterface::rxClear( bool keepStartBit )
@@ -62,6 +59,24 @@ void SerialInterface::rxClear( bool keepStartBit )
   _rx_counter = (keepStartBit)?1:0 ;
 }
 
+//push tx return if suceess
+bool SerialInterface::txPush( uint8_t inByte )
+{
+  if (_tx_counter>=_tx_packet_size) return false;
+  _tx_buffer_ptr[_tx_counter++] = inByte;
+  return true;
+}
+
+//send data to tx
+void SerialInterface::txSend()
+{
+  for( int i = 0; i < _tx_packet_size; i++ ) _serial_ptr->write(_tx_buffer_ptr[i]);
+}
+
+void SerialInterface::txClear( bool keepStartBit )
+{
+  _tx_counter = (keepStartBit)?1:0 ;
+}
 
 
 uint8_t SerialInterface::getCheckSum( uint8_t* data, uint8_t size )
@@ -81,36 +96,43 @@ bool SerialInterface::checkCheckSum( uint8_t* data, uint8_t size )
 
 };
 
+// This boolean operation indicates if a command with a proper startbit is sent and shd be put in a loop
 bool SerialInterface::onRecievedCommand()
-{
-  if ( _serial_ptr->available() == 0 || _rx_counter >= _pocket_size)
+{ 
+  // If there is no byte in the hardware buffer or the current command is recieved but havnt been deal with i.e. the virtual buffer have not been reset, return false.
+  if ( _serial_ptr->available() == 0 || _rx_counter >= _rx_packet_size)
   { 
     return false; 
   }
   
+  // If a start byte is recieved, the virtual buffer is ready to recieved the 2nd byte, i.e. clear the virtual buffer except for the first byte. Return false.
   if ( rxPush() == _start_bit )
   {
     rxClear(true);
   }
 
+  // If a byte except a start byte if recieved while it being the first byte in the pocket, clear the whole virtual buffer and return false.
   else if ( _rx_counter <= 1 )
   {
     rxClear(false);
   }
 
-  else if ( _rx_counter >= _pocket_size )
+  // Return True when a complete command is reached.
+  else if ( _rx_counter >= _rx_packet_size )
   {
-    return true;
+    if(checkCheckSum( _rx_buffer_ptr, _rx_packet_size )) return true;
+    else rxClear(false);
   }
   return false;
 }
 
 
 
-void SerialInterface::set( HardwareSerial* serial_ptr,  uint8_t pocket_size, uint8_t startbit , uint8_t* rx_buffer_ptr, uint8_t* tx_buffer_ptr ){
+void SerialInterface::set( HardwareSerial* serial_ptr,  uint8_t rx_packet_size, uint8_t tx_packet_size, uint8_t startbit , uint8_t* rx_buffer_ptr, uint8_t* tx_buffer_ptr ){
   _start_bit = startbit;
   _serial_ptr = serial_ptr;
-  _pocket_size = pocket_size;
+  _rx_packet_size = rx_packet_size;
+  _tx_packet_size = tx_packet_size;
   _rx_buffer_ptr = rx_buffer_ptr;
   _tx_buffer_ptr = tx_buffer_ptr;
 };
