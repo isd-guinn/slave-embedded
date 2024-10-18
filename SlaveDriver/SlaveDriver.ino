@@ -21,7 +21,7 @@
 
 
 HardwareSerial MasterSerial(0);
-SerialInterface master(&MasterSerial, 6, 6, '>');
+SerialInterface master(&MasterSerial, M2S_POCKET_SIZE, S2M_POCKET_SIZE, START_BIT);
 Wheelbase wheelbase( 24.0, 24.0, LEFTWHEELS_IN1, RIGHTWHEELS_IN1, LEFTWHEELS_IN2, RIGHTWHEELS_IN2, LEFTWHEELS_EN, RIGHTWHEELS_EN);
 
 // Store all the required states for updates the modules
@@ -32,6 +32,8 @@ struct RobotState
   float speed_target;
   float angle_current;
   float angle_target;
+  float angular_speed_current;
+  float angle_spedd_target;
 
   float v_pump;
 };

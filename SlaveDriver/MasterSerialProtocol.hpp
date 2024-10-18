@@ -31,14 +31,24 @@
   17  |   CurrentAngle  (3rd Byte)
   18  |   CurrentAngle  (4th Byte)
 
-  19  |   VacuumVoltage (1st Byte)
-  20  |   VacuumVoltage (2nd Byte)
-  21  |   VacuumVoltage (3rd Byte)
-  22  |   VacuumVoltage (4th Byte)
+  19  |   TarAngSpeed   (1st Byte)
+  20  |   TarAngSpeed   (2nd Byte)
+  21  |   TarAngSpeed   (3rd Byte)
+  22  |   TarAngSpeed   (4th Byte)
 
-  23  |   FOCMode
+  23  |   CurAngSpeed  (1st Byte)
+  24  |   CurAngSpeed  (2nd Byte)
+  25  |   CurAngSpeed  (3rd Byte)
+  26  |   CurAngSpeed  (4th Byte)
 
-  24  |   CheckSum
+  27  |   VacuumVoltage (1st Byte)
+  28  |   VacuumVoltage (2nd Byte)
+  29  |   VacuumVoltage (3rd Byte)
+  30  |   VacuumVoltage (4th Byte)
+
+  31  |   FOCMode
+
+  32  |   CheckSum
 */
 
 /*
@@ -53,7 +63,7 @@
   04  |   CheckSum
 */
 
-#define M2S_POCKET_SIZE   25
+#define M2S_POCKET_SIZE   33
 #define S2M_POCKET_SIZE   5
 
 #define START_BIT         0x3E
