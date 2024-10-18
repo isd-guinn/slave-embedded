@@ -27,8 +27,8 @@ class SerialInterface
     ~SerialInterface();
 
     uint8_t getStartBit() const;
-    uint8_t getRxPocketSize() const;
-    uint8_t getTxPocketSize() const;
+    uint8_t getRxPacketSize() const;
+    uint8_t getTxPacketSize() const;
     uint8_t* getRxBufferPtr() const;
     uint8_t getRxCounter() const;
     uint8_t* getTxBufferPtr() const;

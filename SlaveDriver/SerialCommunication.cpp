@@ -21,12 +21,12 @@ uint8_t SerialInterface::getStartBit() const
   return _start_bit;
 };
 
-uint8_t SerialInterface::getRxPocketSize() const
+uint8_t SerialInterface::getRxPacketSize() const
 {
   return _rx_packet_size;
 };
 
-uint8_t SerialInterface::getTxPocketSize() const
+uint8_t SerialInterface::getTxPacketSize() const
 {
   return _tx_packet_size;
 };
@@ -111,7 +111,7 @@ bool SerialInterface::onRecievedCommand()
     rxClear(true);
   }
 
-  // If a byte except a start byte if recieved while it being the first byte in the pocket, clear the whole virtual buffer and return false.
+  // If a byte except a start byte if recieved while it being the first byte in the packet, clear the whole virtual buffer and return false.
   else if ( _rx_counter <= 1 )
   {
     rxClear(false);

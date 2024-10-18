@@ -63,8 +63,31 @@
   04  |   CheckSum
 */
 
-#define M2S_POCKET_SIZE   33
-#define S2M_POCKET_SIZE   5
+
+#define M2S_PACKET_SIZE   33
+#define S2M_PACKET_SIZE   5
+
+
+/*        Byte Position Macros        */
+#define BYTE_POS_M2S_STARTBIT        0
+#define BYTE_POS_M2S_VESTOP          1
+#define BYTE_POS_M2S_CONTROLMODE     2
+#define BYTE_POS_M2S_TARGETSPEED     3
+#define BYTE_POS_M2S_CURRENTSPEED    7
+#define BYTE_POS_M2S_TARGETANGLE    11
+#define BYTE_POS_M2S_CURRENTANGLE   15
+#define BYTE_POS_M2S_TARANGSPEED    19
+#define BYTE_POS_M2S_CURANGSPEED    23
+#define BYTE_POS_M2S_VACUUMVOLTAGE  27
+#define BYTE_POS_M2S_FOCMODE        31
+#define BYTE_POS_M2S_CHECKSUM       32
+
+#define BYTE_POS_S2M_STARTBIT        0
+#define BYTE_POS_S2M_DEBUGCODE       1
+#define BYTE_POS_S2M_LEFTFOCANGLE    2
+#define BYTE_POS_S2M_RIGHTFOCANGLE   3
+#define BYTE_POS_S2M_CHECKSUM        4
+
 
 #define START_BIT         0x3E
 
@@ -80,7 +103,7 @@ typedef uint8_t control_mode_t;
 #define FOC_DIS_CODE      0xB2
 
 typedef uint8_t debug_code_t;
-#define DEBUG_            0x01
+#define DEBUG_NORMAL      0x00
 
 #endif
 

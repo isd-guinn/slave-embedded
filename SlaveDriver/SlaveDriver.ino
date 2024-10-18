@@ -21,24 +21,27 @@
 
 
 HardwareSerial MasterSerial(0);
-SerialInterface master(&MasterSerial, M2S_POCKET_SIZE, S2M_POCKET_SIZE, START_BIT);
+SerialInterface master(&MasterSerial, M2S_PACKET_SIZE, S2M_PACKET_SIZE, START_BIT);
 Wheelbase wheelbase( 24.0, 24.0, LEFTWHEELS_IN1, RIGHTWHEELS_IN1, LEFTWHEELS_IN2, RIGHTWHEELS_IN2, LEFTWHEELS_EN, RIGHTWHEELS_EN);
 
-// Store all the required states for updates the modules
+/*////////////////////////////////////////////////////////////////
+Robot State Setup
+////////////////////////////////////////////////////////////////*/
 struct RobotState
-{
+{ 
+  bool v_estop;
   control_mode_t control_mode;
-  float speed_current;
   float speed_target;
-  float angle_current;
+  float speed_current;
   float angle_target;
+  float angle_current;
+  float angle_speed_target;
   float angular_speed_current;
-  float angle_spedd_target;
-
-  float v_pump;
+  float vacuum_voltage;
+  bool foc_engaged;
 };
 
-struct RobotState rs{ NULL_CONTROL, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+struct RobotState rs{ false, NULL_CONTROL, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, false };
 
 /*////////////////////////////////////////////////////////////////
 RTOS Tasks Setup
@@ -92,18 +95,32 @@ void xBlinking( void* pv )
   }
 
 }
+
 /*
-    Echo
+    Phrase Command Task
+      Phrase the command packet to either update the state or do a certain task.
 */
 void xPhraseCommand( void* pv )
 { 
+  uint8_t* packet = master.getRxBufferPtr();
 
   for( ; ; )
   { 
     
     if (master.onRecievedCommand())
     {
-      rs.speed_target = REINTERPRET_AS_FLOAT(master.getRxBufferPtr(),1);
+
+      rs.v_estop = (packet[BYTE_POS_M2S_VESTOP] == V_ESTOP_EN_CODE)? true:false;
+      rs.control_mode = packet[BYTE_POS_M2S_CONTROLMODE];
+      rs.speed_target        = REINTERPRET_AS_FLOAT( packet[BYTE_POS_M2S_TARGETSPEED] );
+      rs.speed_current       = REINTERPRET_AS_FLOAT( packet[BYTE_POS_M2S_CURRENTSPEED] );
+      rs.angle_target      = REINTERPRET_AS_FLOAT( packet[BYTE_POS_M2S_TARGETANGLE] );
+      rs.angle_current     = REINTERPRET_AS_FLOAT( packet[BYTE_POS_M2S_CURRENTANGLE] );
+      rs.angle_speed_target   = REINTERPRET_AS_FLOAT( packet[BYTE_POS_M2S_TARANGSPEED] );
+      rs.angular_speed_current= REINTERPRET_AS_FLOAT( packet[BYTE_POS_M2S_CURANGSPEED] );
+      rs.vacuum_voltage    = REINTERPRET_AS_FLOAT( packet[BYTE_POS_M2S_VACUUMVOLTAGE] );
+      rs.foc_engaged = (packet[BYTE_POS_M2S_FOCMODE] == FOC_EN_CODE)? true:false;
+
       MasterSerial.printf("Target Speed: %f\n", rs.speed_target);
       master.rxClear(false);
     }
@@ -116,7 +133,7 @@ void xEchoBuffer( void* pv )
 {
   for( ; ; )
   {
-    for(int i=0;i<master.getRxPocketSize();i++)
+    for(int i=0;i<master.getRxPacketSize();i++)
     {
       MasterSerial.print( master.getRxBufferPtr()[i] );
       MasterSerial.print(" ");
