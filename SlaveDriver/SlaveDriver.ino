@@ -1,3 +1,6 @@
+#define SMALL_ENDIAN
+// #define BIG_ENDIAN
+
 /*
   ISD Dev board will be used
 */
@@ -112,13 +115,13 @@ void xPhraseCommand( void* pv )
 
       rs.v_estop = (packet[BYTE_POS_M2S_VESTOP] == V_ESTOP_EN_CODE)? true:false;
       rs.control_mode = packet[BYTE_POS_M2S_CONTROLMODE];
-      rs.speed_target        = REINTERPRET_AS_FLOAT( packet[BYTE_POS_M2S_TARGETSPEED] );
-      rs.speed_current       = REINTERPRET_AS_FLOAT( packet[BYTE_POS_M2S_CURRENTSPEED] );
-      rs.angle_target      = REINTERPRET_AS_FLOAT( packet[BYTE_POS_M2S_TARGETANGLE] );
-      rs.angle_current     = REINTERPRET_AS_FLOAT( packet[BYTE_POS_M2S_CURRENTANGLE] );
-      rs.angle_speed_target   = REINTERPRET_AS_FLOAT( packet[BYTE_POS_M2S_TARANGSPEED] );
-      rs.angular_speed_current= REINTERPRET_AS_FLOAT( packet[BYTE_POS_M2S_CURANGSPEED] );
-      rs.vacuum_voltage    = REINTERPRET_AS_FLOAT( packet[BYTE_POS_M2S_VACUUMVOLTAGE] );
+      rs.speed_target        = REINTERPRET_AS_FLOAT( packet, BYTE_POS_M2S_TARGETSPEED );
+      rs.speed_current       = REINTERPRET_AS_FLOAT( packet, BYTE_POS_M2S_CURRENTSPEED );
+      rs.angle_target      = REINTERPRET_AS_FLOAT( packet, BYTE_POS_M2S_TARGETANGLE );
+      rs.angle_current     = REINTERPRET_AS_FLOAT( packet, BYTE_POS_M2S_CURRENTANGLE );
+      rs.angle_speed_target   = REINTERPRET_AS_FLOAT( packet, BYTE_POS_M2S_TARANGSPEED );
+      rs.angular_speed_current= REINTERPRET_AS_FLOAT( packet, BYTE_POS_M2S_CURANGSPEED );
+      rs.vacuum_voltage    = REINTERPRET_AS_FLOAT( packet, BYTE_POS_M2S_VACUUMVOLTAGE );
       rs.foc_engaged = (packet[BYTE_POS_M2S_FOCMODE] == FOC_EN_CODE)? true:false;
 
       MasterSerial.printf("Target Speed: %f\n", rs.speed_target);

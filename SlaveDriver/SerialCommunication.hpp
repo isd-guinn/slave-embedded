@@ -4,9 +4,6 @@
 #include <Arduino.h>
 #include <HardwareSerial.h>
 
-// VERY USEFUL MACROOOOOOOO
-#define REINTERPRET_AS_FLOAT(x,y) (*(float*)(&x[y]))
-#define EXTRACT_BYTE_FROM_4BYTE_VALUE(x,y) (*((uint8_t*)(&x)+y))
 
 class SerialInterface
 {

@@ -120,8 +120,10 @@ bool SerialInterface::onRecievedCommand()
   // Return True when a complete command is reached.
   else if ( _rx_counter >= _rx_packet_size )
   {
-    if(checkCheckSum( _rx_buffer_ptr, _rx_packet_size )) return true;
-    else rxClear(false);
+    // if(checkCheckSum( _rx_buffer_ptr, _rx_packet_size )) return true;
+    // else rxClear(false);
+
+    return true;
   }
   return false;
 }

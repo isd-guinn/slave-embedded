@@ -1,9 +1,17 @@
 #ifndef MASTERSERIALPROTOCOL_HPP 
 #define MASTERSERIALPROTOCOL_HPP
 
-#include <Arduino.h>
-#include <SerialCommunication.hpp>
+#ifdef BIG_ENDIAN
+#define REINTERPRET_AS_FLOAT(x,y) (*(float*)(&x[y]))
+#define EXTRACT_BYTE_FROM_4BYTE_VALUE(x,y) (*((uint8_t*)(&x)+y))
+#endif
 
+#ifdef SMALL_ENDIAN
+#define REINTERPRET_AS_FLOAT(x,y) (*(float*)(&x[y]))
+#define EXTRACT_BYTE_FROM_4BYTE_VALUE(x,y) (*((uint8_t*)(&x)+(3-y)))
+#endif
+
+#include <stdint.h>
 /*
   Packet from Master:
   
