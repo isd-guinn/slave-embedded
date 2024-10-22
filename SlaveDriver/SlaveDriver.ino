@@ -50,15 +50,10 @@ void vomitRxBuffer()
 {
       for(int i=0;i<master.getRxPacketSize();i++)
     {
-      // MasterSerial.print( master.getRxBufferPtr()[i] , HEX);
-      // MasterSerial.print(" ");
-
       Serial.print( master.getRxBufferPtr()[i] , HEX);
       Serial.print(" ");
       vTaskDelay(10);
     }
-    // MasterSerial.print("| Size: ");
-    // MasterSerial.println( master.getRxCounter() );
     Serial.print("| Size: ");
     Serial.println( master.getRxCounter() );
     vTaskDelay(10);
