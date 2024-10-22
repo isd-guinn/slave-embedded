@@ -10,6 +10,7 @@ class SerialInterface
   private:
     HardwareSerial* _serial_ptr;
     uint8_t _start_bit;
+    bool _is_packet;
 
     uint8_t _rx_packet_size;
     uint8_t* _rx_buffer_ptr;
@@ -20,7 +21,7 @@ class SerialInterface
     uint8_t _tx_counter;
 
   public:
-    SerialInterface( HardwareSerial* serial_ptr, uint8_t rx_packet_size, uint8_t tx_packet_size, uint8_t startbit );
+    SerialInterface( HardwareSerial* serial_ptr, uint8_t rx_packet_size, uint8_t tx_packet_size, uint8_t startbit);
     ~SerialInterface();
 
     uint8_t getStartBit() const;
@@ -43,7 +44,7 @@ class SerialInterface
     bool onRecievedCommand();
 
 
-    void set( HardwareSerial* serial_ptr,  uint8_t rx_packet_size, uint8_t tx_packet_size, uint8_t startbit , uint8_t* rx_buffer_ptr, uint8_t* tx_buffer_ptr );
+    void set( HardwareSerial* serial_ptr,  uint8_t rx_packet_size, uint8_t tx_packet_size, uint8_t startbit, uint8_t* rx_buffer_ptr, uint8_t* tx_buffer_ptr );
 
 };
 

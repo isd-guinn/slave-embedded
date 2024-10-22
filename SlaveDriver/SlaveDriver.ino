@@ -11,9 +11,6 @@
 
 
 #include "isd-dev-pinout.hpp" //isd Dev board
-#define LED_BUILTIN 48 //ESP32S3 Dev Kit
-// #define LED_BUILTIN 2 //Remote
-
 
 #define LEFTWHEELS_IN1    35
 #define LEFTWHEELS_IN2    36
@@ -23,12 +20,13 @@
 #define RIGHTWHEELS_EN    48
 
 
-HardwareSerial MasterSerial(0);
+// HardwareSerial MasterSerial(0);
+HardwareSerial MasterSerial(2);
 SerialInterface master(&MasterSerial, M2S_PACKET_SIZE, S2M_PACKET_SIZE, START_BIT);
 Wheelbase wheelbase( 24.0, 24.0, LEFTWHEELS_IN1, RIGHTWHEELS_IN1, LEFTWHEELS_IN2, RIGHTWHEELS_IN2, LEFTWHEELS_EN, RIGHTWHEELS_EN);
 
 /*////////////////////////////////////////////////////////////////
-Robot State Setup
+Global Variable/ Robot State Setup
 ////////////////////////////////////////////////////////////////*/
 struct RobotState
 { 
@@ -46,29 +44,62 @@ struct RobotState
 
 struct RobotState rs{ false, NULL_CONTROL, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, false };
 
+uint8_t local_pkt[M2S_PACKET_SIZE];
+
+void vomitRxBuffer()
+{
+      for(int i=0;i<master.getRxPacketSize();i++)
+    {
+      // MasterSerial.print( master.getRxBufferPtr()[i] , HEX);
+      // MasterSerial.print(" ");
+
+      Serial.print( master.getRxBufferPtr()[i] , HEX);
+      Serial.print(" ");
+    }
+    // MasterSerial.print("| Size: ");
+    // MasterSerial.println( master.getRxCounter() );
+    Serial.print("| Size: ");
+    Serial.println( master.getRxCounter() );
+}
+
 /*////////////////////////////////////////////////////////////////
 RTOS Tasks Setup
 ////////////////////////////////////////////////////////////////*/
 
+/*    Blinking || Core 1   */
+void xBlinking( void* pv );
 uint32_t xBlinking_stack = 2048;
 TaskHandle_t xBlinking_handle = NULL;
-void xBlinking( void* pv );
 
+/*    Phrase Command || Core 0   */
+void xPhraseCommand( void* pv );
 uint32_t xPhraseCommand_stack = 10000;
 TaskHandle_t xPhraseCommand_handle = NULL;
-void xPhraseCommand( void* pv );
 
+
+/*    Update State || Core 0   */
+void xUpdateState( void* pv );
+uint32_t xUpdateState_stack = 10000;
+TaskHandle_t xUpdateState_handle = NULL;
+
+/*    Echo Buffer || Core 1   */
+void xEchoBuffer( void* pv );
 uint32_t xEchoBuffer_stack = 2048;
 TaskHandle_t xEchoBuffer_handle = NULL;
-void xEchoBuffer( void* pv );
 
+/*    Vacuum || Core 1   */
+void xVacuum( void* pv );
 uint32_t xVacuum_stack = 2048;
 TaskHandle_t xVacuum_handle = NULL;
-void xVacuum( void* pv );
 
+/*    Update Wheelbase || Core 1   */
+void xUpdateWheelbase( void* pv );
 uint32_t xUpdateWheelbase_stack = 10000;
 TaskHandle_t xUpdateWheelbase_handle = NULL;
-void xUpdateWheelbase( void* pv );
+
+void xVomitState( void* pv );
+uint32_t xVomitState_stack = 10000;
+TaskHandle_t xVomitState_handle = NULL;
 
 
 /*////////////////////////////////////////////////////////////////
@@ -105,44 +136,48 @@ void xBlinking( void* pv )
 */
 void xPhraseCommand( void* pv )
 { 
-  uint8_t* packet = master.getRxBufferPtr();
-
   for( ; ; )
   { 
-    
-    if (master.onRecievedCommand())
+    if ( master.onRecievedCommand() )
     {
-
-      rs.v_estop = (packet[BYTE_POS_M2S_VESTOP] == V_ESTOP_EN_CODE)? true:false;
-      rs.control_mode = packet[BYTE_POS_M2S_CONTROLMODE];
-      rs.speed_target        = REINTERPRET_AS_FLOAT( packet, BYTE_POS_M2S_TARGETSPEED );
-      rs.speed_current       = REINTERPRET_AS_FLOAT( packet, BYTE_POS_M2S_CURRENTSPEED );
-      rs.angle_target      = REINTERPRET_AS_FLOAT( packet, BYTE_POS_M2S_TARGETANGLE );
-      rs.angle_current     = REINTERPRET_AS_FLOAT( packet, BYTE_POS_M2S_CURRENTANGLE );
-      rs.angle_speed_target   = REINTERPRET_AS_FLOAT( packet, BYTE_POS_M2S_TARANGSPEED );
-      rs.angular_speed_current= REINTERPRET_AS_FLOAT( packet, BYTE_POS_M2S_CURANGSPEED );
-      rs.vacuum_voltage    = REINTERPRET_AS_FLOAT( packet, BYTE_POS_M2S_VACUUMVOLTAGE );
-      rs.foc_engaged = (packet[BYTE_POS_M2S_FOCMODE] == FOC_EN_CODE)? true:false;
-
-      MasterSerial.printf("Target Speed: %f\n", rs.speed_target);
+      for(int i=0;i<M2S_PACKET_SIZE;i++) 
+      {
+        local_pkt[i] = master.getRxBufferPtr()[i];
+      }
+      // Serial.println("Triggered!!!!!!!!!!!!!");
+      // vomitRxBuffer();
       master.rxClear(false);
     }
-    vTaskDelay(50 / portTICK_PERIOD_MS);
+    vTaskDelay( 20 / portTICK_PERIOD_MS );
   }
 
+}
+
+void xUpdateState( void* pv )
+{
+  for ( ; ; )
+  {
+      rs.v_estop              = (local_pkt[BYTE_POS_M2S_VESTOP] == V_ESTOP_EN_CODE)? true:false;
+      rs.control_mode         = local_pkt[BYTE_POS_M2S_CONTROLMODE];
+      rs.speed_target         = ByteUtil::reconFloat( local_pkt, BYTE_POS_M2S_TARGETSPEED );
+      rs.speed_current        = ByteUtil::reconFloat( local_pkt, BYTE_POS_M2S_CURRENTSPEED );
+      rs.angle_target         = ByteUtil::reconFloat( local_pkt, BYTE_POS_M2S_TARGETANGLE );
+      rs.angle_current        = ByteUtil::reconFloat( local_pkt, BYTE_POS_M2S_CURRENTANGLE );
+      rs.angle_speed_target   = ByteUtil::reconFloat( local_pkt, BYTE_POS_M2S_TARANGSPEED );
+      rs.angular_speed_current= ByteUtil::reconFloat( local_pkt, BYTE_POS_M2S_CURANGSPEED );
+      rs.vacuum_voltage       = ByteUtil::reconFloat( local_pkt, BYTE_POS_M2S_VACUUMVOLTAGE );
+      rs.foc_engaged = (local_pkt[BYTE_POS_M2S_FOCMODE] == FOC_EN_CODE)? true:false;
+      //Serial.printf("LEFT !!!!!: %f\tRIGHT !!!!!: %f\n", rs.speed_target, rs.angle_target);
+      // MasterSerial.printf("Target Speed: %f\n", rs.speed_target);
+      vTaskDelay( 100 / portTICK_PERIOD_MS );
+  }
 }
 
 void xEchoBuffer( void* pv )
 {
   for( ; ; )
   {
-    for(int i=0;i<master.getRxPacketSize();i++)
-    {
-      MasterSerial.print( master.getRxBufferPtr()[i] );
-      MasterSerial.print(" ");
-    }
-    MasterSerial.print("| Size: ");
-    MasterSerial.println( master.getRxCounter() );
+    vomitRxBuffer();
     vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
 }
@@ -184,7 +219,8 @@ void xUpdateWheelbase( void* pv )
 { 
   for( ; ; )
   { 
-    
+    // Serial.printf("Control Mode: %x\n", rs.control_mode);
+
     switch (rs.control_mode)
     {
       case NULL_CONTROL:
@@ -199,11 +235,40 @@ void xUpdateWheelbase( void* pv )
       case ANGLE_CONTROL:
         break;
 
+      case MANUAL_CONTROL:
+        // Serial.printf("Left Wheel: %f\tRight Wheel: %f\n", rs.speed_target, rs.angle_target);
+        if(rs.speed_target > 0) wheelbase.wheelAntiClockwise(0, rs.speed_target);
+        else wheelbase.wheelClockwise(0, -rs.speed_target);
+        if(rs.angle_target > 0) wheelbase.wheelClockwise(1, rs.angle_target);
+        else wheelbase.wheelAntiClockwise(1, -rs.angle_target);
+        break;
+
       default:
         break;
     }
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+  }
+}
 
+void xVomitState( void* pv )
+{ 
+
+  for( ; ; )
+  {
+    Serial.println("----------------------------------------");
+    Serial.printf("v_estop: %x\n",                rs.v_estop);
+    Serial.printf("control_mode: %x\n",           rs.control_mode);
+    Serial.printf("speed_target: %f\n",           rs.speed_target);
+    Serial.printf("speed_current: %f\n",          rs.speed_current);
+    Serial.printf("angle_current: %f\n",          rs.angle_current);
+    Serial.printf("angle_speed_target: %f\n",     rs.angle_speed_target);
+    Serial.printf("angular_speed_current: %f\n",  rs.angular_speed_current);
+    Serial.printf("vacuum_voltage: %f\n",         rs.vacuum_voltage);
+    Serial.printf("foc_engaged: %x\n",            rs.foc_engaged);
+    Serial.println("----------------------------------------");
+    
+    vTaskDelay(500 / portTICK_PERIOD_MS);
   }
 }
 
@@ -214,8 +279,10 @@ Main Program
 
 void setup() 
 {
-  // Serial.begin(115200);
-  MasterSerial.begin(115200, SERIAL_8N1, 44, 43); //ESP32 Dev kit
+  MasterSerial.setRxBufferSize(132);
+  Serial.begin(115200);
+  MasterSerial.begin(115200, SERIAL_8N1, 42, 41); //ISD Dev board Serial2
+  // MasterSerial.begin(115200, SERIAL_8N1, 44, 43); //ESP32 Dev kit
   // MasterSerial.begin(115200, SERIAL_8N1, 3, 1); //ESP32S
 
 
@@ -233,20 +300,28 @@ void setup()
   rs.control_mode = SPEED_CONTROL;
   rs.speed_target = 12.0f;
 
-  xTaskCreatePinnedToCore(  xEchoBuffer,
-                            "Blinking",
-                            xEchoBuffer_stack,
-                            NULL,
-                            1,
-                            &xEchoBuffer_handle,
-                            1 );
+  // xTaskCreatePinnedToCore(  xEchoBuffer,
+  //                           "Blinking",
+  //                           xEchoBuffer_stack,
+  //                           NULL,
+  //                           1,
+  //                           &xEchoBuffer_handle,
+  //                           1 );
 
   xTaskCreatePinnedToCore(  xPhraseCommand,
                             "Phrase Command",
                             xPhraseCommand_stack,
                             NULL,
-                            1,
+                            2,
                             &xPhraseCommand_handle,
+                            0 );
+
+  xTaskCreatePinnedToCore(  xUpdateState,
+                            "Update State",
+                            xUpdateState_stack,
+                            NULL,
+                            2,
+                            &xUpdateState_handle,
                             1 );
 
   xTaskCreatePinnedToCore(  xBlinking,
@@ -272,6 +347,15 @@ void setup()
   //                           1,
   //                           &xUpdateWheelbase_handle,
   //                           1 );
+
+  xTaskCreatePinnedToCore(  xVomitState,
+                            "Vomit State",
+                            xVomitState_stack,
+                            NULL,
+                            1,
+                            &xVomitState_handle,
+                            1 );
+
 
   vTaskDelay(500 / portTICK_PERIOD_MS);
 

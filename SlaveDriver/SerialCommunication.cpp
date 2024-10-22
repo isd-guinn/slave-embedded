@@ -6,6 +6,8 @@ SerialInterface::SerialInterface( HardwareSerial* serial_ptr, uint8_t rx_packet_
   _rx_counter = 0;
   uint8_t* tx_buffer_ptr = new uint8_t[tx_packet_size];
   _tx_counter = 0;
+
+  _is_packet = false;
   set( serial_ptr, rx_packet_size, tx_packet_size, startbit, rx_buffer_ptr, tx_buffer_ptr);
 };
 
@@ -70,7 +72,12 @@ bool SerialInterface::txPush( uint8_t inByte )
 //send data to tx
 void SerialInterface::txSend()
 {
-  for( int i = 0; i < _tx_packet_size; i++ ) _serial_ptr->write(_tx_buffer_ptr[i]);
+  for( int i = 0; i < _tx_packet_size; i++ )
+  {
+    Serial.printf("%x ",_tx_buffer_ptr[i]);
+    _serial_ptr->write(_tx_buffer_ptr[i]);
+  }
+  Serial.println("|| Sent");
 }
 
 void SerialInterface::txClear( bool keepStartBit )
@@ -83,7 +90,7 @@ uint8_t SerialInterface::getCheckSum( uint8_t* data, uint8_t size )
 {
 
   uint8_t check_sum = 0; 
-  for( int i = 0; i < size - 1; i++ ) check_sum += data[i];
+  for( int i = 0; i < size-1; i++ ) check_sum += data[i];
   return check_sum;
 
 };
@@ -104,33 +111,35 @@ bool SerialInterface::onRecievedCommand()
   { 
     return false; 
   }
-  
-  // If a start byte is recieved, the virtual buffer is ready to recieved the 2nd byte, i.e. clear the virtual buffer except for the first byte. Return false.
-  if ( rxPush() == _start_bit )
+
+  uint8_t b = rxPush();
+  if (_is_packet)
   {
-    rxClear(true);
+    if(_rx_counter >= _rx_packet_size)
+    {
+      if(checkCheckSum( _rx_buffer_ptr, _rx_packet_size ))
+      {
+        return true;
+      }
+      rxClear(false);
+      return false;
+    }
+    return false;
   }
 
-  // If a byte except a start byte if recieved while it being the first byte in the packet, clear the whole virtual buffer and return false.
-  else if ( _rx_counter <= 1 )
-  {
-    rxClear(false);
+  else if (b == _start_bit)
+  { 
+    _is_packet = true;
+    return false;
   }
 
-  // Return True when a complete command is reached.
-  else if ( _rx_counter >= _rx_packet_size )
-  {
-    // if(checkCheckSum( _rx_buffer_ptr, _rx_packet_size )) return true;
-    // else rxClear(false);
-
-    return true;
-  }
+  rxClear(false);
   return false;
 }
 
 
 
-void SerialInterface::set( HardwareSerial* serial_ptr,  uint8_t rx_packet_size, uint8_t tx_packet_size, uint8_t startbit , uint8_t* rx_buffer_ptr, uint8_t* tx_buffer_ptr ){
+void SerialInterface::set( HardwareSerial* serial_ptr,  uint8_t rx_packet_size, uint8_t tx_packet_size, uint8_t startbit, uint8_t* rx_buffer_ptr, uint8_t* tx_buffer_ptr ){
   _start_bit = startbit;
   _serial_ptr = serial_ptr;
   _rx_packet_size = rx_packet_size;
