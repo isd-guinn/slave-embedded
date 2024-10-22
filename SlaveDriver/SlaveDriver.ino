@@ -22,7 +22,7 @@
 
 // HardwareSerial MasterSerial(0);
 HardwareSerial MasterSerial(2);
-SerialInterface master(&MasterSerial, M2S_PACKET_SIZE, S2M_PACKET_SIZE, START_BIT);
+SerialInterface master(&MasterSerial, M2S_PACKET_SIZE, S2M_PACKET_SIZE, START_BIT, END_BIT);
 Wheelbase wheelbase( 24.0, 24.0, LEFTWHEELS_IN1, RIGHTWHEELS_IN1, LEFTWHEELS_IN2, RIGHTWHEELS_IN2, LEFTWHEELS_EN, RIGHTWHEELS_EN);
 
 /*////////////////////////////////////////////////////////////////
@@ -55,11 +55,13 @@ void vomitRxBuffer()
 
       Serial.print( master.getRxBufferPtr()[i] , HEX);
       Serial.print(" ");
+      vTaskDelay(10);
     }
     // MasterSerial.print("| Size: ");
     // MasterSerial.println( master.getRxCounter() );
     Serial.print("| Size: ");
     Serial.println( master.getRxCounter() );
+    vTaskDelay(10);
 }
 
 /*////////////////////////////////////////////////////////////////
@@ -261,6 +263,7 @@ void xVomitState( void* pv )
     Serial.printf("control_mode: %x\n",           rs.control_mode);
     Serial.printf("speed_target: %f\n",           rs.speed_target);
     Serial.printf("speed_current: %f\n",          rs.speed_current);
+    Serial.printf("angle_target: %f\n",          rs.angle_target);
     Serial.printf("angle_current: %f\n",          rs.angle_current);
     Serial.printf("angle_speed_target: %f\n",     rs.angle_speed_target);
     Serial.printf("angular_speed_current: %f\n",  rs.angular_speed_current);

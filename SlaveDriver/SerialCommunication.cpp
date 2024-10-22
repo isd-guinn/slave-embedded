@@ -1,6 +1,6 @@
 #include "SerialCommunication.hpp"
 
-SerialInterface::SerialInterface( HardwareSerial* serial_ptr, uint8_t rx_packet_size, uint8_t tx_packet_size, uint8_t startbit = '>')
+SerialInterface::SerialInterface( HardwareSerial* serial_ptr, uint8_t rx_packet_size, uint8_t tx_packet_size, uint8_t startbit = '>',  uint8_t endbit = 0x3F)
 { 
   uint8_t* rx_buffer_ptr = new uint8_t[rx_packet_size];
   _rx_counter = 0;
@@ -8,7 +8,7 @@ SerialInterface::SerialInterface( HardwareSerial* serial_ptr, uint8_t rx_packet_
   _tx_counter = 0;
 
   _is_packet = false;
-  set( serial_ptr, rx_packet_size, tx_packet_size, startbit, rx_buffer_ptr, tx_buffer_ptr);
+  set( serial_ptr, rx_packet_size, tx_packet_size, startbit, endbit, rx_buffer_ptr, tx_buffer_ptr);
 };
 
 SerialInterface::~SerialInterface()
@@ -90,7 +90,7 @@ uint8_t SerialInterface::getCheckSum( uint8_t* data, uint8_t size )
 {
 
   uint8_t check_sum = 0; 
-  for( int i = 0; i < size-1; i++ ) check_sum += data[i];
+  for( int i = 0; i < size-2; i++ ) check_sum += data[i];
   return check_sum;
 
 };
@@ -98,7 +98,7 @@ uint8_t SerialInterface::getCheckSum( uint8_t* data, uint8_t size )
 bool SerialInterface::checkCheckSum( uint8_t* data, uint8_t size )
 {
 
-  if( getCheckSum(data, size) == data[size - 1] ) return true;
+  if( getCheckSum(data, size) == data[size - 2] ) return true;
   else return false; 
 
 };
@@ -113,17 +113,21 @@ bool SerialInterface::onRecievedCommand()
   }
 
   uint8_t b = rxPush();
+
   if (_is_packet)
   {
     if(_rx_counter >= _rx_packet_size)
     {
-      if(checkCheckSum( _rx_buffer_ptr, _rx_packet_size ))
+      _is_packet = false;
+      if(checkCheckSum( _rx_buffer_ptr, _rx_packet_size ) && _rx_buffer_ptr[_rx_packet_size-1] == _end_bit)
       {
+        
         return true;
       }
       rxClear(false);
       return false;
     }
+
     return false;
   }
 
@@ -139,8 +143,9 @@ bool SerialInterface::onRecievedCommand()
 
 
 
-void SerialInterface::set( HardwareSerial* serial_ptr,  uint8_t rx_packet_size, uint8_t tx_packet_size, uint8_t startbit, uint8_t* rx_buffer_ptr, uint8_t* tx_buffer_ptr ){
+void SerialInterface::set( HardwareSerial* serial_ptr,  uint8_t rx_packet_size, uint8_t tx_packet_size, uint8_t startbit, uint8_t endbit, uint8_t* rx_buffer_ptr, uint8_t* tx_buffer_ptr ){
   _start_bit = startbit;
+  _end_bit = endbit;
   _serial_ptr = serial_ptr;
   _rx_packet_size = rx_packet_size;
   _tx_packet_size = tx_packet_size;
