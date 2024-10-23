@@ -44,6 +44,11 @@ uint8_t SerialInterface::getRxCounter() const
   return _rx_counter;
 }
 
+uint8_t SerialInterface::getTxCounter() const
+{
+  return _tx_counter;
+}
+
 uint8_t* SerialInterface::getTxBufferPtr() const
 {
   return _tx_buffer_ptr;

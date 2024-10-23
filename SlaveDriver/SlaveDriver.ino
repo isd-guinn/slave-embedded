@@ -12,12 +12,12 @@
 
 #include "isd-dev-pinout.hpp" //isd Dev board
 
-#define LEFTWHEELS_IN1    35
+#define LEFTWHEELS_IN1    37
 #define LEFTWHEELS_IN2    36
-#define RIGHTWHEELS_IN1   37
-#define RIGHTWHEELS_IN2   38
-#define LEFTWHEELS_EN     47
-#define RIGHTWHEELS_EN    48
+#define RIGHTWHEELS_IN1   13
+#define RIGHTWHEELS_IN2   12
+#define LEFTWHEELS_EN     38
+#define RIGHTWHEELS_EN    14
 
 
 // HardwareSerial MasterSerial(0);
@@ -145,7 +145,7 @@ void xPhraseCommand( void* pv )
       // vomitRxBuffer();
       master.rxClear(false);
     }
-    vTaskDelay( 20 / portTICK_PERIOD_MS );
+    vTaskDelay( 2 / portTICK_PERIOD_MS );
   }
 
 }
@@ -234,10 +234,10 @@ void xUpdateWheelbase( void* pv )
 
       case MANUAL_CONTROL:
         // Serial.printf("Left Wheel: %f\tRight Wheel: %f\n", rs.speed_target, rs.angle_target);
-        if(rs.speed_target > 0) wheelbase.wheelAntiClockwise(0, rs.speed_target);
-        else wheelbase.wheelClockwise(0, -rs.speed_target);
-        if(rs.angle_target > 0) wheelbase.wheelClockwise(1, rs.angle_target);
-        else wheelbase.wheelAntiClockwise(1, -rs.angle_target);
+        if(rs.speed_target > 0) wheelbase.wheelClockwise(0, rs.speed_target);
+        else wheelbase.wheelAntiClockwise(0, -rs.speed_target);
+        if(rs.angle_target > 0) wheelbase.wheelAntiClockwise(1, rs.angle_target);
+        else wheelbase.wheelClockwise(1, -rs.angle_target);
         break;
 
       default:
@@ -266,7 +266,7 @@ void xVomitState( void* pv )
     Serial.printf("foc_engaged: %x\n",            rs.foc_engaged);
     Serial.println("----------------------------------------");
     
-    vTaskDelay(500 / portTICK_PERIOD_MS);
+    vTaskDelay(200 / portTICK_PERIOD_MS);
   }
 }
 
@@ -283,20 +283,22 @@ void setup()
   // MasterSerial.begin(115200, SERIAL_8N1, 44, 43); //ESP32 Dev kit
   // MasterSerial.begin(115200, SERIAL_8N1, 3, 1); //ESP32S
 
+  Serial.println("INIT\t||\START SETUP");
 
   // Initialise wheelbase
   if(!wheelbase.init(false))
   { 
     while(true)
     {
-      // Serial.println("ERROR\t||\tINIT FAILED");
+      Serial.println("ERROR\t||\tINIT FAILED");
       vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
   }
   // !!!!!!!! Stuck at Here if failed
 
-  rs.control_mode = SPEED_CONTROL;
+  rs.control_mode = MANUAL_CONTROL;
   rs.speed_target = 12.0f;
+  rs.angle_target = 12.0f;
 
   // xTaskCreatePinnedToCore(  xEchoBuffer,
   //                           "Blinking",
@@ -310,7 +312,7 @@ void setup()
                             "Phrase Command",
                             xPhraseCommand_stack,
                             NULL,
-                            2,
+                            1,
                             &xPhraseCommand_handle,
                             0 );
 
@@ -338,13 +340,13 @@ void setup()
   //                           &xVacuum_handle,
   //                           1 );
 
-  // xTaskCreatePinnedToCore(  xUpdateWheelbase,
-  //                           "UpdateWheelbase",
-  //                           xUpdateWheelbase_stack,
-  //                           NULL,
-  //                           1,
-  //                           &xUpdateWheelbase_handle,
-  //                           1 );
+  xTaskCreatePinnedToCore(  xUpdateWheelbase,
+                            "UpdateWheelbase",
+                            xUpdateWheelbase_stack,
+                            NULL,
+                            1,
+                            &xUpdateWheelbase_handle,
+                            1 );
 
   xTaskCreatePinnedToCore(  xVomitState,
                             "Vomit State",

@@ -78,8 +78,9 @@ void Wheelbase::stop()
 
 void Wheelbase::foward(float v_target)
 {
-  wheelAntiClockwise(0,v_target);
-  wheelClockwise(1,v_target);
+
+  wheelClockwise(0,v_target);
+  wheelAntiClockwise(1,v_target);
 
   if(_debug_mode) Serial.printf("DEBUG\t||\tWheelbase FORWARD: Target Voltage: %f\n", v_target);
   vTaskDelay(10);
@@ -87,8 +88,8 @@ void Wheelbase::foward(float v_target)
 
 void Wheelbase::backward(float v_target)
 {
-  wheelClockwise(0,v_target);
-  wheelAntiClockwise(1,v_target); 
+  wheelAntiClockwise(0,v_target); 
+  wheelClockwise(1,v_target);
 
   if(_debug_mode) Serial.printf("DEBUG\t||\tWheelbase BACKWARD: Target Voltage: %f\n", v_target);
   vTaskDelay(10);
@@ -96,8 +97,8 @@ void Wheelbase::backward(float v_target)
 
 void Wheelbase::left(float v_target)
 {
-  wheelClockwise(0,v_target);
-  wheelClockwise(1,v_target);
+  wheelAntiClockwise(0,v_target);
+  wheelAntiClockwise(1,v_target); 
 
   if(_debug_mode) Serial.printf("DEBUG\t||\tWheelbase LEFT: Target Voltage: %f\n", v_target);
   vTaskDelay(10);
@@ -105,8 +106,8 @@ void Wheelbase::left(float v_target)
 
 void Wheelbase::right(float v_target)
 {
-  wheelAntiClockwise(0,v_target);
-  wheelAntiClockwise(1,v_target); 
+  wheelClockwise(0,v_target);
+  wheelClockwise(1,v_target);
 
   if(_debug_mode) Serial.printf("DEBUG\t||\tWheelbase RIGHT: Target Voltage: %f\n", v_target);
   vTaskDelay(10);
