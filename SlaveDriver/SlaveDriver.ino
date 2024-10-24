@@ -46,17 +46,19 @@ struct RobotState rs{ false, NULL_CONTROL, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0
 
 uint8_t local_pkt[M2S_PACKET_SIZE];
 
+int trig_count = 0;
+
 void vomitRxBuffer()
 {
       for(int i=0;i<master.getRxPacketSize();i++)
     {
       Serial.print( master.getRxBufferPtr()[i] , HEX);
       Serial.print(" ");
-      vTaskDelay(10);
+      vTaskDelay(1);
     }
     Serial.print("| Size: ");
     Serial.println( master.getRxCounter() );
-    vTaskDelay(10);
+    vTaskDelay(1);
 }
 
 /*////////////////////////////////////////////////////////////////
@@ -141,11 +143,12 @@ void xPhraseCommand( void* pv )
       {
         local_pkt[i] = master.getRxBufferPtr()[i];
       }
+      trig_count++;
       // Serial.println("Triggered!!!!!!!!!!!!!");
       // vomitRxBuffer();
       master.rxClear(false);
     }
-    vTaskDelay( 2 / portTICK_PERIOD_MS );
+    vTaskDelay( 50 / portTICK_PERIOD_MS );
   }
 
 }
@@ -277,6 +280,8 @@ Main Program
 
 void setup() 
 {
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+
   MasterSerial.setRxBufferSize(132);
   Serial.begin(115200);
   MasterSerial.begin(115200, SERIAL_8N1, 42, 41); //ISD Dev board Serial2

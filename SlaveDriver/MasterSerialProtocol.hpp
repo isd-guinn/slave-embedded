@@ -135,6 +135,9 @@ typedef uint8_t control_mode_t;
 #define SPEED_CONTROL     0x01
 #define ANGLE_CONTROL     0x02
 #define MANUAL_CONTROL    0x03
+#define FOWARD_CONTROL    0x61
+#define TURNLEFT_CONTROL  0x62
+#define TURNRIGHT_CONTROL 0x63
 
 #define FOC_EN_CODE       0xB1
 #define FOC_DIS_CODE      0xB2
