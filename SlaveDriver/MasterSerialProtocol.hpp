@@ -74,9 +74,11 @@ namespace ByteUtil
 
   31  |   FOCMode
 
-  32  |   CheckSum
+  32  |   Direction
 
-  33  |   EndBit
+  33  |   CheckSum
+
+  34  |   EndBit
 */
 
 /*
@@ -85,21 +87,24 @@ namespace ByteUtil
   00  |   StartBit
   01  |   DebugCode
 
-  02  |   LeftFOCAngle
-  03  |   RightFOCAngle
-  
-  04  |   CheckSum
+  02  |   LeftFOCAngle (1st Byte)
+  03  |   LeftFOCAngle (2nd Byte)
+  04  |   LeftFOCAngle (3rd Byte)
+  05  |   LeftFOCAngle (4th Byte)
 
-  05  |   EndBit
+  06  |   RightFOCAngle (1st Byte)
+  07  |   RightFOCAngle (2nd Byte)
+  08  |   RightFOCAngle (3rd Byte)
+  09  |   RightFOCAngle (4th Byte)
+  
+  10  |   CheckSum
+
+  11  |   EndBit
 */
 
 
-#define M2S_PACKET_SIZE   34
-#define S2M_PACKET_SIZE   6
-
-// #define M2S_PACKET_SIZE   33
-// #define S2M_PACKET_SIZE   5
-
+#define M2S_PACKET_SIZE   35
+#define S2M_PACKET_SIZE   12
 
 /*        Byte Position Macros        */
 #define BYTE_POS_M2S_STARTBIT        0
@@ -113,8 +118,9 @@ namespace ByteUtil
 #define BYTE_POS_M2S_CURANGSPEED    23
 #define BYTE_POS_M2S_VACUUMVOLTAGE  27
 #define BYTE_POS_M2S_FOCMODE        31
-#define BYTE_POS_M2S_CHECKSUM       32
-#define BYTE_POS_M2S_ENDBIT         33
+#define BYTE_POS_M2S_ACTION         32
+#define BYTE_POS_M2S_CHECKSUM       33
+#define BYTE_POS_M2S_ENDBIT         34
 
 #define BYTE_POS_S2M_STARTBIT        0
 #define BYTE_POS_S2M_DEBUGCODE       1
@@ -122,7 +128,6 @@ namespace ByteUtil
 #define BYTE_POS_S2M_RIGHTFOCANGLE   3
 #define BYTE_POS_S2M_CHECKSUM        4
 #define BYTE_POS_S2M_ENDBIT          5
-
 
 #define START_BIT         0x3E
 #define END_BIT           0x3F
@@ -135,16 +140,19 @@ typedef uint8_t control_mode_t;
 #define SPEED_CONTROL     0x01
 #define ANGLE_CONTROL     0x02
 #define MANUAL_CONTROL    0x03
-#define FOWARD_CONTROL    0x61
-#define TURNLEFT_CONTROL  0x62
-#define TURNRIGHT_CONTROL 0x63
 
 #define FOC_EN_CODE       0xB1
 #define FOC_DIS_CODE      0xB2
 
+typedef uint8_t action_t;
+#define STOP              0x00
+#define FORWARD           0x01
+#define BACKWARD          0x02
+#define ANTI_CLOCKWISE    0x03
+#define CLOCKWISE         0x04
+
 typedef uint8_t debug_code_t;
-#define DEBUG_NORMAL      0x00
+#define DEBUG_            0x00
 
 #endif
-
 

@@ -74,6 +74,7 @@ struct RobotState{
   float angular_speed_current;
   float vacuum_voltage;
   bool foc_engaged;
+  action_t direction;
 
   float probe_angle_left;
   float probe_tar_angle_left;
@@ -119,6 +120,11 @@ void vomitRxBuffer(){
 void xPhraseCommand( void* pv );
 uint32_t xPhraseCommand_stack = 10000;
 TaskHandle_t xPhraseCommand_handle = NULL;
+
+/*    Send Command || Core 0   */
+void xSendCommand( void* pv );
+uint32_t xSendCommand_stack = 10000;
+TaskHandle_t xSendCommand_handle = NULL;
 
 /*    Update State || Core 0   */
 void xUpdateState( void* pv );
@@ -175,6 +181,53 @@ void xPhraseCommand( void* pv ){
     }
     vTaskDelay( 50 / portTICK_PERIOD_MS );
 
+  }
+
+}
+
+void xSendCommand( void* pv ){
+
+  for( ; ; ){
+
+/*
+  00  |   StartBit
+  01  |   DebugCode
+
+  02  |   LeftFOCAngle (1st Byte)
+  03  |   LeftFOCAngle (2nd Byte)
+  04  |   LeftFOCAngle (3rd Byte)
+  05  |   LeftFOCAngle (4th Byte)
+
+  06  |   RightFOCAngle (1st Byte)
+  07  |   RightFOCAngle (2nd Byte)
+  08  |   RightFOCAngle (3rd Byte)
+  09  |   RightFOCAngle (4th Byte)
+  
+  10  |   CheckSum
+
+  11  |   EndBit
+*/
+
+    master.txPush(START_BIT);           // 00  |   StartBit
+    master.txPush(DEBUG_);              // 01  |   DebugCode
+
+    master.txPush( EXTRACT_BYTE_FROM_4BYTE_VALUE(rs.probe_angle_left,0) ); // 02  |   LeftFOCAngle   (1st Byte)
+    master.txPush( EXTRACT_BYTE_FROM_4BYTE_VALUE(rs.probe_angle_left,1) );
+    master.txPush( EXTRACT_BYTE_FROM_4BYTE_VALUE(rs.probe_angle_left,2) );
+    master.txPush( EXTRACT_BYTE_FROM_4BYTE_VALUE(rs.probe_angle_left,3) );
+
+    master.txPush( EXTRACT_BYTE_FROM_4BYTE_VALUE(rs.probe_angle_right,0) );   // 06  |   RightFOCAngle   (1st Byte)
+    master.txPush( EXTRACT_BYTE_FROM_4BYTE_VALUE(rs.probe_angle_right,1) );
+    master.txPush( EXTRACT_BYTE_FROM_4BYTE_VALUE(rs.probe_angle_right,2) );
+    master.txPush( EXTRACT_BYTE_FROM_4BYTE_VALUE(rs.probe_angle_right,3) );
+    
+    master.txPush(master.getCheckSum(master.getTxBufferPtr(),master.getTxPacketSize())); // 10  |   CheckSum
+    master.txPush(END_BIT); // 11  |   CheckSum
+
+    master.txSend();
+    master.txClear(false);
+
+    vTaskDelay( 50 / portTICK_PERIOD_MS );
   }
 
 }
@@ -393,15 +446,12 @@ bool foc_init(bool debug = true){
   foc_motor_r.P_angle.I = 0.00f;
   foc_motor_r.P_angle.D = 1.00f;
 
-  foc_motor_l.velocity_limit = 9.42f;
-  foc_motor_r.velocity_limit = 9.42f;
+  // foc_motor_l.velocity_limit = 9.42f;
+  // foc_motor_r.velocity_limit = 9.42f;
 
-  foc_motor_l.voltage_limit = 22; // Volts -  default driver.voltage_limit
-  foc_motor_r.voltage_limit = 22; // Volts -  default driver.voltage_limit
+  foc_motor_l.voltage_limit = hw_v_limit; // Volts -  default driver.voltage_limit
+  foc_motor_r.voltage_limit = hw_v_limit; // Volts -  default driver.voltage_limit
 
-  foc_motor_l.current_limit = 1; // Amps -  default 2 Amps
-  foc_motor_r.current_limit = 1; // Amps -  default 2 Amps
- 
   foc_motor_l.useMonitoring(Serial);
   foc_motor_r.useMonitoring(Serial);
 
