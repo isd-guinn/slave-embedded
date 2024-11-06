@@ -78,10 +78,10 @@ void SerialInterface::txSend()
 {
   for( int i = 0; i < _tx_packet_size; i++ )
   {
-    Serial.printf("%x ",_tx_buffer_ptr[i]);
+    // Serial.printf("%x ",_tx_buffer_ptr[i]);
     _serial_ptr->write(_tx_buffer_ptr[i]);
   }
-  Serial.println("|| Sent");
+  // Serial.println("|| Sent");
 }
 
 void SerialInterface::txClear( bool keepStartBit )
@@ -107,59 +107,91 @@ bool SerialInterface::checkCheckSum( uint8_t* data, uint8_t size )
 
 };
 
-bool SerialInterface::onRecievedCommand()
-{ 
+// bool SerialInterface::onRecievedCommand()
+// { 
 
-  // If there is nothing in the hardware buffer
-  if( _serial_ptr->available() == 0 ) 
-  {
-    // Serial.println("Nothing");
-    return false;
-  }
+//   int avail = _serial_ptr->available();
+//   Serial.printf("Get avail %d \n", _serial_ptr->available());
 
-  else if( !_is_packet)
-  {
-    if (rxPush() ==_start_bit)
-    { 
-      _is_packet=true;
-      rxClear(true);
-      // Serial.println("Start bit get");
-      return false;
+//   // If there is nothing in the hardware buffer
+//   if( avail == 0 ){
+//     Serial.println("Nothing");
+//     return false;
+//   }
+
+//   else if( !_is_packet){
+//     Serial.println("Not Packet");
+//     if (rxPush() ==_start_bit)
+//     { 
+//       _is_packet=true;
+//       _rx_buffer_ptr[0] = _start_bit;
+//       rxClear(true);
+//       Serial.println("Start bit get");
+//       return false;
+//     }
+
+//     Serial.println("Start bit not get");
+//     rxClear(false);
+//     return false;
+    
+//   }
+
+//   // If we know that there somthing sending in the middle of the packet
+//   else{
+//     // Target size of bytes for a packet is reached
+//     if(avail >= (_rx_packet_size - _rx_counter) || (_rx_packet_size - _rx_counter) <= 0)
+//     {
+//       Serial.println("Reached Desired Amount of bytes");
+//       //Recieve _rx_packet_size-1 bytes
+//       for(int i=0;_rx_counter == _rx_packet_size;i++)
+//       { 
+//         rxPush();
+//       }
+
+//       _is_packet = false;
+
+//       if(checkCheckSum( _rx_buffer_ptr, _rx_packet_size ) && _rx_buffer_ptr[_rx_packet_size-1] == _end_bit){
+//         Serial.println("GETTTTTTTTTTTTTTTTTT\nGETTTTTTTTTTTTTTTTTT\nGETTTTTTTTTTTTTTTTTT");
+//         return true;
+//       }
+
+//       // if not packet
+//       Serial.println("Not Package");
+//       rxClear(false);
+//       return false;
+//     }
+
+//     rxPush();
+//     Serial.printf("Not enough!!!!! %d \n", _serial_ptr->available());
+//     return false;
+//   }
+  
+//   return false;
+// }
+
+bool SerialInterface::onRecievedCommand(){
+  int avail = _serial_ptr->available();
+  // if( _rx_counter >= _rx_packet_size)
+  if(avail > 0 && !_is_packet){
+    _rx_buffer_ptr[0] = _serial_ptr->read();
+
+    if(_rx_buffer_ptr[0] == _start_bit){
+      _rx_counter = 1;
+      _is_packet = true;
     }
 
-    rxClear(false);
-    return false;
-    
   }
+  else if (_is_packet){
+     _rx_counter += _serial_ptr->readBytes(_rx_buffer_ptr+1,_rx_packet_size-1);
+     _is_packet = false;
 
-  // If we know that there somthing sending in the middle of the packet
-  else
-  {
-    // Target size of bytes for a packet is reached
-    if(_serial_ptr->available() >= _rx_packet_size - 1)
-    {
-      // Serial.println("Reached Desired Amount of bytes");
-      //Recieve _rx_packet_size-1 bytes
-      for(int i=1;i<_rx_packet_size;i++)
-      {
-        rxPush();
-      }
-
-      _is_packet = false;
-
-      if(checkCheckSum( _rx_buffer_ptr, _rx_packet_size ) && _rx_buffer_ptr[_rx_packet_size-1] == _end_bit)
-      {
+      if(checkCheckSum( _rx_buffer_ptr, _rx_packet_size ) && _rx_buffer_ptr[_rx_packet_size-1] == _end_bit){
+        // Serial.println("GETTTTTTTTTTTTTTTTTT\nGETTTTTTTTTTTTTTTTTT\nGETTTTTTTTTTTTTTTTTT");
         return true;
       }
-
-      // if not packet
-      rxClear(false);
-      return false;
-    }
-    // Serial.printf("Not enough!!!!! %d \n", _serial_ptr->available());
-    return false;
   }
-  
+
+  // Serial.printf("BYTE: %x \tAvail: %d\t_rx_counter: %d\t_is_packet: %d\n",_rx_buffer_ptr[0], avail, _rx_counter, _is_packet);
   return false;
 }
 

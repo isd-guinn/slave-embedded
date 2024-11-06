@@ -17,21 +17,21 @@
 #define I2C2_SDA    7    
 #define I2C2_SCK    6  
 
-#define LEFTWHEELS_IN1    37
-#define LEFTWHEELS_IN2    36
-#define RIGHTWHEELS_IN1   13
-#define RIGHTWHEELS_IN2   12
-#define LEFTWHEELS_EN     1
-#define RIGHTWHEELS_EN    2  
+#define LEFTWHEELS_IN1    36
+#define LEFTWHEELS_IN2    35
+#define RIGHTWHEELS_IN1   38
+#define RIGHTWHEELS_IN2   37
+#define LEFTWHEELS_EN     11
+#define RIGHTWHEELS_EN    12
 
-#define BLDC1_IN1   47
-#define BLDC1_IN2   21
-#define BLDC1_IN3   11
-#define BLDC2_IN1   36
-#define BLDC2_IN2   35
-#define BLDC2_IN3   48
+#define BLDC1_IN1   21
+#define BLDC1_IN2   47
+#define BLDC1_IN3   48
+#define BLDC2_IN1   12
+#define BLDC2_IN2   13
+#define BLDC2_IN3   14
 
-#define VACUUM_PIN
+#define VACUUM_PIN  40
 
 #define VACUUM_FREQ   50
 #define VACUUM_RES    12
@@ -101,7 +101,7 @@ uint8_t local_pkt_s2m[S2M_PACKET_SIZE];
 ////////////////////////////////////////////////////////////////*/
 
 void vomitRxBuffer(){
-      for(int i=0;i<master.getRxPacketSize();i++)
+    for(int i=0;i<master.getRxPacketSize();i++)
     {
       Serial.print( master.getRxBufferPtr()[i] , HEX);
       Serial.print(" ");
@@ -141,7 +141,7 @@ void xUpdateWheelbase( void* pv );
 uint32_t xUpdateWheelbase_stack = 10000;
 TaskHandle_t xUpdateWheelbase_handle = NULL;
 
-/*    FOC routine || Core 1   */
+/*    FOC routine || Core 0   */
 void xFOCroutine( void* pv );
 uint32_t xFOCroutine_stack = 10000;
 TaskHandle_t xFOCroutine_handle = NULL;
@@ -169,17 +169,22 @@ RTOS Tasks Definition
 /*  Phrase the command packet to either update the state or do a certain task. */
 void xPhraseCommand( void* pv ){
 
+  MasterSerial.flush();
+
   for( ; ; ){
+
 
     if ( master.onRecievedCommand() ){
       for(int i=0;i<M2S_PACKET_SIZE;i++) {
         local_pkt_m2s[i] = master.getRxBufferPtr()[i];
       }
-      // Serial.println("Triggered!!!!!!!!!!!!!");
+
+      Serial.println("Triggered!!!!!!!!!!!!!");
       // vomitRxBuffer();
+
       master.rxClear(false);
     }
-    vTaskDelay( 50 / portTICK_PERIOD_MS );
+    vTaskDelay( 2 / portTICK_PERIOD_MS );
 
   }
 
@@ -188,25 +193,6 @@ void xPhraseCommand( void* pv ){
 void xSendCommand( void* pv ){
 
   for( ; ; ){
-
-/*
-  00  |   StartBit
-  01  |   DebugCode
-
-  02  |   LeftFOCAngle (1st Byte)
-  03  |   LeftFOCAngle (2nd Byte)
-  04  |   LeftFOCAngle (3rd Byte)
-  05  |   LeftFOCAngle (4th Byte)
-
-  06  |   RightFOCAngle (1st Byte)
-  07  |   RightFOCAngle (2nd Byte)
-  08  |   RightFOCAngle (3rd Byte)
-  09  |   RightFOCAngle (4th Byte)
-  
-  10  |   CheckSum
-
-  11  |   EndBit
-*/
 
     master.txPush(START_BIT);           // 00  |   StartBit
     master.txPush(DEBUG_);              // 01  |   DebugCode
@@ -222,12 +208,12 @@ void xSendCommand( void* pv ){
     master.txPush( EXTRACT_BYTE_FROM_4BYTE_VALUE(rs.probe_angle_right,3) );
     
     master.txPush(master.getCheckSum(master.getTxBufferPtr(),master.getTxPacketSize())); // 10  |   CheckSum
-    master.txPush(END_BIT); // 11  |   CheckSum
+    master.txPush(END_BIT); // 11  |   endbit
 
     master.txSend();
     master.txClear(false);
 
-    vTaskDelay( 50 / portTICK_PERIOD_MS );
+    vTaskDelay( 70 / portTICK_PERIOD_MS );
   }
 
 }
@@ -256,8 +242,7 @@ void xVacuum( void* pv ){
 
   for( ; ; ){ 
     // Serial.println("Set speed");
-    ledcWrite(SERVO0_PIN,vacuum_duty);
-    ledcWrite(SERVO1_PIN,vacuum_duty);
+    ledcWrite(VACUUM_PIN,vacuum_duty);
     vTaskDelay(500 / portTICK_PERIOD_MS);
   }
 
@@ -269,6 +254,9 @@ void xUpdateWheelbase( void* pv ){
 
     switch (rs.control_mode){
       case NULL_CONTROL:
+        wheelbase.stop();
+        // wheelbase.wheelClockwise(0, 2.0f);
+        // wheelbase.wheelAntiClockwise(1, 2.0f);
         break;
       
       case SPEED_CONTROL:
@@ -282,6 +270,12 @@ void xUpdateWheelbase( void* pv ){
 
       case MANUAL_CONTROL:
         // Serial.printf("Left Wheel: %f\tRight Wheel: %f\n", rs.speed_target, rs.angle_target);
+
+        // wheelbase.wheelClockwise(0, 2.0f);
+        // wheelbase.wheelAntiClockwise(1, 2.0f);
+
+        if(rs.speed_target<1.0f && rs.speed_target>-1.0f)wheelbase.wheelStop(0);
+        if(rs.angle_target<1.0f && rs.angle_target>-1.0f)wheelbase.wheelStop(1);
         if(rs.speed_target > 0) wheelbase.wheelClockwise(0, rs.speed_target);
         else wheelbase.wheelAntiClockwise(0, -rs.speed_target);
         if(rs.angle_target > 0) wheelbase.wheelAntiClockwise(1, rs.angle_target);
@@ -309,7 +303,7 @@ void xFOCroutine( void* pv ){
 
     // Serial.printf("%f %f\n",foc_motor_l.shaftAngle(),foc_motor_r.shaftAngle());
 
-    vTaskDelay(5);
+    vTaskDelay(2);
   }
 }
 
@@ -350,7 +344,9 @@ void xVomitState( void* pv )
     Serial.printf("angle_speed_target: %f\n",     rs.angle_speed_target);
     Serial.printf("angular_speed_current: %f\n",  rs.angular_speed_current);
     Serial.printf("vacuum_voltage: %f\n",         rs.vacuum_voltage);
-    Serial.printf("foc_engaged: %x\n",            rs.foc_engaged);
+    // Serial.printf("foc_engaged: %x\n",            rs.foc_engaged);
+    // Serial.printf("foc_l: %f\n",            rs.probe_angle_left);
+    // Serial.printf("foc_r: %f\n",            rs.probe_angle_right);
     Serial.println("----------------------------------------");
     
     vTaskDelay(200 / portTICK_PERIOD_MS);
@@ -372,19 +368,19 @@ bool led_init(){
 
 bool vacuum_init(){
   //Vacuum INIT Begin
-  while(ledcAttach(VACUUM_FREQ, 50, 12)==false){
+  while(ledcAttach(VACUUM_PIN, 50, 12)==false){
     Serial.println("Attaching...");
     vTaskDelay(500 / portTICK_PERIOD_MS);
   }
-  ledcWrite(VACUUM_FREQ,410);
+  ledcWrite(VACUUM_PIN,410);
   vTaskDelay(2000 / portTICK_PERIOD_MS);
-  ledcWrite(VACUUM_FREQ,308);
-  vTaskDelay(500 / portTICK_PERIOD_MS);
+  ledcWrite(VACUUM_PIN,308);
+  vTaskDelay(2000 / portTICK_PERIOD_MS);
   return true;
   //Vacuum INIT End
 }
 bool master_serial_init(){
-  MasterSerial.setRxBufferSize(132);
+  MasterSerial.setRxBufferSize(140);
   MasterSerial.begin(115200, SERIAL_8N1, 42, 41); //ISD Dev board Serial2
   return true;
 }
@@ -435,16 +431,16 @@ bool foc_init(bool debug = true){
   foc_motor_r.PID_velocity.I = 0.00f;
   foc_motor_r.PID_velocity.D = 0;
 
-  foc_motor_l.LPF_velocity.Tf = 0.02f;
-  foc_motor_r.LPF_velocity.Tf = 0.02f;
+  foc_motor_l.LPF_velocity.Tf = 0.03f;
+  foc_motor_r.LPF_velocity.Tf = 0.03f;
 
   foc_motor_l.P_angle.P = 20.0f;
   foc_motor_l.P_angle.I = 0.00f;
-  foc_motor_l.P_angle.D = 0.05f;
+  foc_motor_l.P_angle.D = 0.02f;
 
-  foc_motor_r.P_angle.P = 30.0f;
+  foc_motor_r.P_angle.P = 25.0f;
   foc_motor_r.P_angle.I = 0.00f;
-  foc_motor_r.P_angle.D = 1.00f;
+  foc_motor_r.P_angle.D = 0.005f;
 
   // foc_motor_l.velocity_limit = 9.42f;
   // foc_motor_r.velocity_limit = 9.42f;
@@ -467,16 +463,14 @@ bool foc_init(bool debug = true){
 
   while(!foc_motor_l.initFOC()){
     Serial.println("FOC init failed!");
-    return false;
   }
 
   while(!foc_motor_r.initFOC()){
     Serial.println("FOC init failed!");
-    return false;
   }
 
-  rs.probe_tar_angle_left = -2.20f;
-  rs.probe_tar_angle_right = 4.80f;
+  rs.probe_tar_angle_left = -2.50f;
+  rs.probe_tar_angle_right = -3.30f;
 
   return true;
 
@@ -488,90 +482,42 @@ bool foc_init(bool debug = true){
 
 void setup() 
 {
-  vTaskDelay(500 / portTICK_PERIOD_MS);
+  // vTaskDelay(500 / portTICK_PERIOD_MS);
 
   Serial.begin(115200);
-
+  master_serial_init();
 
   Serial.println("INIT\t||\START SETUP");
-  
-  led_init();
-  vacuum_init();
-  master_serial_init();
   wheelbase.init(false);
-  foc_init(true);
+  wheelbase.stop();
+
+  vacuum_init();
+  // while(!foc_init(true));
+  led_init();
 
   // !!!!!!!! Stuck at Here if failed
 
-
-  xTaskCreatePinnedToCore(  xPhraseCommand,
-                            "Phrase Command",
-                            xPhraseCommand_stack,
-                            NULL,
-                            1,
-                            &xPhraseCommand_handle,
-                            0 );
-
-  xTaskCreatePinnedToCore(  xUpdateState,
-                            "Update State",
-                            xUpdateState_stack,
-                            NULL,
-                            2,
-                            &xUpdateState_handle,
-                            1 );
-
-  // xTaskCreatePinnedToCore(  xVacuum,
-  //                           "Vacuum",
-  //                           xVacuum_stack,
-  //                           NULL,
-  //                           1,
-  //                           &xVacuum_handle,
-  //                           1 );
-
-  xTaskCreatePinnedToCore(  xUpdateWheelbase,
-                            "UpdateWheelbase",
-                            xUpdateWheelbase_stack,
-                            NULL,
-                            1,
-                            &xUpdateWheelbase_handle,
-                            1 );
-
-  xTaskCreatePinnedToCore(  xFOCroutine,
-                            "FOC Routine",
-                            xFOCroutine_stack,
-                            NULL,
-                            2,
-                            &xFOCroutine_handle,
-                            1 );
-
-  xTaskCreatePinnedToCore(  xBlinking,
-                            "Blinking",
-                            xBlinking_stack,
-                            NULL,
-                            1,
-                            &xBlinking_handle,
-                            1 );
-
-  // xTaskCreatePinnedToCore(  xEchoBuffer,
-  //                           "Blinking",
-  //                           xEchoBuffer_stack,
-  //                           NULL,
-  //                           1,
-  //                           &xEchoBuffer_handle,
-  //                           1 );
-
-  xTaskCreatePinnedToCore(  xVomitState,
-                            "Vomit State",
-                            xVomitState_stack,
-                            NULL,
-                            1,
-                            &xVomitState_handle,
-                            1 );
+  xTaskCreatePinnedToCore(  xPhraseCommand,   "Phrase Command",   xPhraseCommand_stack,NULL,3,&xPhraseCommand_handle,0 );
+  // xTaskCreatePinnedToCore(  xSendCommand,   "Send Command",   xSendCommand_stack,NULL,1,&xSendCommand_handle,1 );
+  xTaskCreatePinnedToCore(  xUpdateState,   "Update State",   xUpdateState_stack,NULL,2,&xUpdateState_handle,1 );
+  xTaskCreatePinnedToCore(  xVacuum,    "Vacuum",   xVacuum_stack, NULL,1,&xVacuum_handle,1 );
+  xTaskCreatePinnedToCore(  xUpdateWheelbase, "UpdateWheelbase",  xUpdateWheelbase_stack, NULL, 1 , &xUpdateWheelbase_handle, 1 );
+  // xTaskCreatePinnedToCore( xFOCroutine, "FOC Routine",  xFOCroutine_stack,  NULL, 1,  &xFOCroutine_handle,  0 );
+  xTaskCreatePinnedToCore( xBlinking, "Blinking", xBlinking_stack,  NULL, 1,  &xBlinking_handle, 1 );
+  // xTaskCreatePinnedToCore( xEchoBuffer, "Echo Buffer", xEchoBuffer_stack,  NULL, 1,  &xEchoBuffer_handle, 1 );
+  xTaskCreatePinnedToCore( xVomitState, "Vomit State",  xVomitState_stack, NULL, 1,  &xVomitState_handle, 1 );
 
 
   vTaskDelay(500 / portTICK_PERIOD_MS);
 
+  rs.probe_angle_left = 0.00f;
+  rs.probe_angle_right = 0.00f;
+  rs.speed_target = 0.00f;
+  rs.angle_target = 0.00f;
+
 }
 
-void loop(){}
+void loop(){
+
+}
 

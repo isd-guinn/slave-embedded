@@ -125,9 +125,9 @@ namespace ByteUtil
 #define BYTE_POS_S2M_STARTBIT        0
 #define BYTE_POS_S2M_DEBUGCODE       1
 #define BYTE_POS_S2M_LEFTFOCANGLE    2
-#define BYTE_POS_S2M_RIGHTFOCANGLE   3
-#define BYTE_POS_S2M_CHECKSUM        4
-#define BYTE_POS_S2M_ENDBIT          5
+#define BYTE_POS_S2M_RIGHTFOCANGLE   6
+#define BYTE_POS_S2M_CHECKSUM        10
+#define BYTE_POS_S2M_ENDBIT          11
 
 #define START_BIT         0x3E
 #define END_BIT           0x3F
