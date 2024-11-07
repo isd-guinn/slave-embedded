@@ -13,9 +13,9 @@
 #include "isd-dev-pinout.hpp" //isd Dev board
 
 #define I2C1_SDA    4
-#define I2C1_SCK    5    
-#define I2C2_SDA    7    
-#define I2C2_SCK    6  
+#define I2C1_SCK    15   
+#define I2C2_SDA    19
+#define I2C2_SCK    18 
 
 #define LEFTWHEELS_IN1    36
 #define LEFTWHEELS_IN2    35
@@ -24,12 +24,12 @@
 #define LEFTWHEELS_EN     11
 #define RIGHTWHEELS_EN    12
 
-#define BLDC1_IN1   21
-#define BLDC1_IN2   47
-#define BLDC1_IN3   48
-#define BLDC2_IN1   12
-#define BLDC2_IN2   13
-#define BLDC2_IN3   14
+#define BLDC1_IN1   13
+#define BLDC1_IN2   12
+#define BLDC1_IN3   14
+#define BLDC2_IN1   33
+#define BLDC2_IN2   32
+#define BLDC2_IN3   35
 
 #define VACUUM_PIN  40
 
@@ -485,11 +485,11 @@ void setup()
   // vTaskDelay(500 / portTICK_PERIOD_MS);
 
   Serial.begin(115200);
-  master_serial_init();
+  // master_serial_init();
 
   Serial.println("INIT\t||\START SETUP");
-  wheelbase.init(false);
-  wheelbase.stop();
+  // wheelbase.init(false);
+  // wheelbase.stop();
 
   vacuum_init();
   // while(!foc_init(true));
@@ -497,15 +497,15 @@ void setup()
 
   // !!!!!!!! Stuck at Here if failed
 
-  xTaskCreatePinnedToCore(  xPhraseCommand,   "Phrase Command",   xPhraseCommand_stack,NULL,3,&xPhraseCommand_handle,0 );
+  // xTaskCreatePinnedToCore(  xPhraseCommand,   "Phrase Command",   xPhraseCommand_stack,NULL,3,&xPhraseCommand_handle,0 );
   // xTaskCreatePinnedToCore(  xSendCommand,   "Send Command",   xSendCommand_stack,NULL,1,&xSendCommand_handle,1 );
-  xTaskCreatePinnedToCore(  xUpdateState,   "Update State",   xUpdateState_stack,NULL,2,&xUpdateState_handle,1 );
+  // xTaskCreatePinnedToCore(  xUpdateState,   "Update State",   xUpdateState_stack,NULL,2,&xUpdateState_handle,1 );
   xTaskCreatePinnedToCore(  xVacuum,    "Vacuum",   xVacuum_stack, NULL,1,&xVacuum_handle,1 );
-  xTaskCreatePinnedToCore(  xUpdateWheelbase, "UpdateWheelbase",  xUpdateWheelbase_stack, NULL, 1 , &xUpdateWheelbase_handle, 1 );
+  // xTaskCreatePinnedToCore(  xUpdateWheelbase, "UpdateWheelbase",  xUpdateWheelbase_stack, NULL, 1 , &xUpdateWheelbase_handle, 1 );
   // xTaskCreatePinnedToCore( xFOCroutine, "FOC Routine",  xFOCroutine_stack,  NULL, 1,  &xFOCroutine_handle,  0 );
   xTaskCreatePinnedToCore( xBlinking, "Blinking", xBlinking_stack,  NULL, 1,  &xBlinking_handle, 1 );
   // xTaskCreatePinnedToCore( xEchoBuffer, "Echo Buffer", xEchoBuffer_stack,  NULL, 1,  &xEchoBuffer_handle, 1 );
-  xTaskCreatePinnedToCore( xVomitState, "Vomit State",  xVomitState_stack, NULL, 1,  &xVomitState_handle, 1 );
+  // xTaskCreatePinnedToCore( xVomitState, "Vomit State",  xVomitState_stack, NULL, 1,  &xVomitState_handle, 1 );
 
 
   vTaskDelay(500 / portTICK_PERIOD_MS);
