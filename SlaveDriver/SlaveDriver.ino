@@ -29,7 +29,7 @@
 #define BLDC1_IN3   14
 #define BLDC2_IN1   33
 #define BLDC2_IN2   32
-#define BLDC2_IN3   35
+#define BLDC2_IN3   26
 
 #define VACUUM_PIN  40
 
@@ -143,7 +143,7 @@ TaskHandle_t xUpdateWheelbase_handle = NULL;
 
 /*    FOC routine || Core 0   */
 void xFOCroutine( void* pv );
-uint32_t xFOCroutine_stack = 10000;
+uint32_t xFOCroutine_stack = 15000;
 TaskHandle_t xFOCroutine_handle = NULL;
 
 /*    Blinking || Core 1   */
@@ -294,11 +294,11 @@ void xUpdateWheelbase( void* pv ){
 void xFOCroutine( void* pv ){
   for( ; ; ){
     foc_motor_l.loopFOC();
-    foc_motor_l.move(rs.probe_tar_angle_left);
+    // foc_motor_l.move(rs.probe_tar_angle_left);
     rs.probe_angle_left = foc_motor_l.shaftAngle();
 
     foc_motor_r.loopFOC();
-    foc_motor_r.move(rs.probe_tar_angle_right);
+    // foc_motor_r.move(rs.probe_tar_angle_right);
     rs.probe_angle_right = foc_motor_r.shaftAngle();
 
     // Serial.printf("%f %f\n",foc_motor_l.shaftAngle(),foc_motor_r.shaftAngle());
@@ -341,12 +341,12 @@ void xVomitState( void* pv )
     Serial.printf("speed_current: %f\n",          rs.speed_current);
     Serial.printf("angle_target: %f\n",           rs.angle_target);
     Serial.printf("angle_current: %f\n",          rs.angle_current);
-    Serial.printf("angle_speed_target: %f\n",     rs.angle_speed_target);
-    Serial.printf("angular_speed_current: %f\n",  rs.angular_speed_current);
-    Serial.printf("vacuum_voltage: %f\n",         rs.vacuum_voltage);
+    // Serial.printf("angle_speed_target: %f\n",     rs.angle_speed_target);
+    // Serial.printf("angular_speed_current: %f\n",  rs.angular_speed_current);
+    // Serial.printf("vacuum_voltage: %f\n",         rs.vacuum_voltage);
     // Serial.printf("foc_engaged: %x\n",            rs.foc_engaged);
-    // Serial.printf("foc_l: %f\n",            rs.probe_angle_left);
-    // Serial.printf("foc_r: %f\n",            rs.probe_angle_right);
+    Serial.printf("foc_l: %f\n",            rs.probe_angle_left);
+    Serial.printf("foc_r: %f\n",            rs.probe_angle_right);
     Serial.println("----------------------------------------");
     
     vTaskDelay(200 / portTICK_PERIOD_MS);
@@ -469,8 +469,8 @@ bool foc_init(bool debug = true){
     Serial.println("FOC init failed!");
   }
 
-  rs.probe_tar_angle_left = -2.50f;
-  rs.probe_tar_angle_right = -3.30f;
+  rs.probe_tar_angle_left = 2.95f;
+  rs.probe_tar_angle_right = -2.25f;
 
   return true;
 
@@ -482,7 +482,7 @@ bool foc_init(bool debug = true){
 
 void setup() 
 {
-  // vTaskDelay(500 / portTICK_PERIOD_MS);
+  vTaskDelay(500 / portTICK_PERIOD_MS);
 
   Serial.begin(115200);
   // master_serial_init();
@@ -491,21 +491,21 @@ void setup()
   // wheelbase.init(false);
   // wheelbase.stop();
 
-  vacuum_init();
-  // while(!foc_init(true));
-  led_init();
+  // vacuum_init();
+  foc_init(true);
+  // led_init();
 
   // !!!!!!!! Stuck at Here if failed
 
   // xTaskCreatePinnedToCore(  xPhraseCommand,   "Phrase Command",   xPhraseCommand_stack,NULL,3,&xPhraseCommand_handle,0 );
   // xTaskCreatePinnedToCore(  xSendCommand,   "Send Command",   xSendCommand_stack,NULL,1,&xSendCommand_handle,1 );
   // xTaskCreatePinnedToCore(  xUpdateState,   "Update State",   xUpdateState_stack,NULL,2,&xUpdateState_handle,1 );
-  xTaskCreatePinnedToCore(  xVacuum,    "Vacuum",   xVacuum_stack, NULL,1,&xVacuum_handle,1 );
+  // xTaskCreatePinnedToCore(  xVacuum,    "Vacuum",   xVacuum_stack, NULL,1,&xVacuum_handle,1 );
   // xTaskCreatePinnedToCore(  xUpdateWheelbase, "UpdateWheelbase",  xUpdateWheelbase_stack, NULL, 1 , &xUpdateWheelbase_handle, 1 );
-  // xTaskCreatePinnedToCore( xFOCroutine, "FOC Routine",  xFOCroutine_stack,  NULL, 1,  &xFOCroutine_handle,  0 );
+  xTaskCreatePinnedToCore( xFOCroutine, "FOC Routine",  xFOCroutine_stack,  NULL, 1,  &xFOCroutine_handle,  1 );
   xTaskCreatePinnedToCore( xBlinking, "Blinking", xBlinking_stack,  NULL, 1,  &xBlinking_handle, 1 );
   // xTaskCreatePinnedToCore( xEchoBuffer, "Echo Buffer", xEchoBuffer_stack,  NULL, 1,  &xEchoBuffer_handle, 1 );
-  // xTaskCreatePinnedToCore( xVomitState, "Vomit State",  xVomitState_stack, NULL, 1,  &xVomitState_handle, 1 );
+  xTaskCreatePinnedToCore( xVomitState, "Vomit State",  xVomitState_stack, NULL, 1,  &xVomitState_handle, 1 );
 
 
   vTaskDelay(500 / portTICK_PERIOD_MS);
