@@ -12,4 +12,9 @@
 #define SDA_PIN 4
 #define SCL_PIN 5
 
+#define CS_PIN      6
+#define MOSI_PIN    15
+#define MISO_PIN    16
+#define SCK_PIN     7
+
 #endif

@@ -6,6 +6,7 @@
 */
 
 #include <SimpleFOC.h>
+#include <Adafruit_MCP2515.h>
 
 #include "WheelsControl.hpp"
 #include "SerialCommunication.hpp"
@@ -36,6 +37,9 @@
 #define VACUUM_FREQ   50
 #define VACUUM_RES    12
 
+#define QUARTZ_FREQUENCY 8000000UL
+#define CAN_BAUDRATE 500000
+
 /*////////////////////////////////////////////////////////////////
     Global Variable/ Robot State Setup
 ////////////////////////////////////////////////////////////////*/
@@ -60,6 +64,9 @@ MagneticSensorI2C foc_sensor_r = MagneticSensorI2C(AS5600_I2C);
 HardwareSerial MasterSerial(2);
 SerialInterface master(&MasterSerial, M2S_PACKET_SIZE, S2M_PACKET_SIZE, START_BIT, END_BIT);
 Wheelbase wheelbase( hw_v_supply, hw_v_supply, LEFTWHEELS_IN1, RIGHTWHEELS_IN1, LEFTWHEELS_IN2, RIGHTWHEELS_IN2, LEFTWHEELS_EN, RIGHTWHEELS_EN);
+
+
+Adafruit_MCP2515 mcp(CS_PIN,MOSI_PIN,MISO_PIN,SCK_PIN);
 
 
 struct RobotState{
@@ -161,6 +168,10 @@ void xVomitState( void* pv );
 uint32_t xVomitState_stack = 10000;
 TaskHandle_t xVomitState_handle = NULL;
 
+/*    MasterCanProcess || Core 1   */
+void xMasterCanProcess( void* pv );
+uint32_t xMasterCanProcess_stack = 20000;
+TaskHandle_t xMasterCanProcess_handle = NULL;
 
 /*////////////////////////////////////////////////////////////////
 RTOS Tasks Definition
@@ -255,8 +266,8 @@ void xUpdateWheelbase( void* pv ){
     switch (rs.control_mode){
       case NULL_CONTROL:
         wheelbase.stop();
-        // wheelbase.wheelClockwise(0, 2.0f);
-        // wheelbase.wheelAntiClockwise(1, 2.0f);
+        wheelbase.wheelClockwise(0, 2.0f);
+        wheelbase.wheelAntiClockwise(1, 2.0f);
         break;
       
       case SPEED_CONTROL:
@@ -329,8 +340,7 @@ void xEchoBuffer( void* pv ){
 
 }
 
-void xVomitState( void* pv )
-{ 
+void xVomitState( void* pv ){ 
 
   for( ; ; )
   {
@@ -353,6 +363,22 @@ void xVomitState( void* pv )
   }
 }
 
+void xMasterCanProcess( void* pv ){
+  for( ; ; ){
+    Serial.print("Sending packet ... ");
+    Serial.print("begin? ");
+    Serial.print(mcp.beginPacket(0x12));
+    mcp.write('h');
+    mcp.write('e');
+    mcp.write('l');
+    mcp.write('l');
+    mcp.write('o');
+    Serial.print(" end? ");
+    Serial.print(mcp.endPacket());
+
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+  }
+}
 
 /*////////////////////////////////////////////////////////////////
     Inits
@@ -368,10 +394,8 @@ bool led_init(){
 
 bool vacuum_init(){
   //Vacuum INIT Begin
-  while(ledcAttach(VACUUM_PIN, 50, 12)==false){
-    Serial.println("Attaching...");
-    vTaskDelay(500 / portTICK_PERIOD_MS);
-  }
+
+  ledcAttach(VACUUM_PIN, 50, 12);
   ledcWrite(VACUUM_PIN,410);
   vTaskDelay(2000 / portTICK_PERIOD_MS);
   ledcWrite(VACUUM_PIN,308);
@@ -379,11 +403,26 @@ bool vacuum_init(){
   return true;
   //Vacuum INIT End
 }
+
 bool master_serial_init(){
   MasterSerial.setRxBufferSize(140);
   MasterSerial.begin(115200, SERIAL_8N1, 42, 41); //ISD Dev board Serial2
   return true;
 }
+
+bool master_can_init(){
+
+  Serial.println("Init");
+  mcp.setClockFrequency(QUARTZ_FREQUENCY);
+
+  while (!mcp.begin(CAN_BAUDRATE)) {
+    Serial.println("Error initializing MCP2515.");
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+  }
+
+  Serial.println("MCP2515 chip found");
+}
+
 bool foc_init(bool debug = true){
   i2c1.begin( I2C1_SDA, I2C1_SCK, 400000UL );
   i2c2.begin( I2C2_SDA, I2C2_SCK, 400000UL );
@@ -485,7 +524,18 @@ void setup()
   // vTaskDelay(500 / portTICK_PERIOD_MS);
 
   Serial.begin(115200);
-  master_serial_init();
+  // master_serial_init();
+  // master_can_init();
+
+  Serial.println("Init");
+  mcp.setClockFrequency(QUARTZ_FREQUENCY);
+
+  while (!mcp.begin(CAN_BAUDRATE)) {
+    Serial.println("Error initializing MCP2515.");
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+  }
+
+  Serial.println("MCP2515 chip found");
 
   Serial.println("INIT\t||\START SETUP");
   wheelbase.init(false);
@@ -497,16 +547,16 @@ void setup()
 
   // !!!!!!!! Stuck at Here if failed
 
-  xTaskCreatePinnedToCore(  xPhraseCommand,   "Phrase Command",   xPhraseCommand_stack,NULL,3,&xPhraseCommand_handle,0 );
+  // xTaskCreatePinnedToCore(  xPhraseCommand,   "Phrase Command",   xPhraseCommand_stack,NULL,3,&xPhraseCommand_handle,0 );
   // xTaskCreatePinnedToCore(  xSendCommand,   "Send Command",   xSendCommand_stack,NULL,1,&xSendCommand_handle,1 );
-  xTaskCreatePinnedToCore(  xUpdateState,   "Update State",   xUpdateState_stack,NULL,2,&xUpdateState_handle,1 );
-  xTaskCreatePinnedToCore(  xVacuum,    "Vacuum",   xVacuum_stack, NULL,1,&xVacuum_handle,1 );
+  // xTaskCreatePinnedToCore(  xUpdateState,   "Update State",   xUpdateState_stack,NULL,2,&xUpdateState_handle,1 );
+  // xTaskCreatePinnedToCore(  xVacuum,    "Vacuum",   xVacuum_stack, NULL,1,&xVacuum_handle,1 );
   xTaskCreatePinnedToCore(  xUpdateWheelbase, "UpdateWheelbase",  xUpdateWheelbase_stack, NULL, 1 , &xUpdateWheelbase_handle, 1 );
   // xTaskCreatePinnedToCore( xFOCroutine, "FOC Routine",  xFOCroutine_stack,  NULL, 1,  &xFOCroutine_handle,  0 );
   xTaskCreatePinnedToCore( xBlinking, "Blinking", xBlinking_stack,  NULL, 1,  &xBlinking_handle, 1 );
   // xTaskCreatePinnedToCore( xEchoBuffer, "Echo Buffer", xEchoBuffer_stack,  NULL, 1,  &xEchoBuffer_handle, 1 );
-  xTaskCreatePinnedToCore( xVomitState, "Vomit State",  xVomitState_stack, NULL, 1,  &xVomitState_handle, 1 );
-
+  // xTaskCreatePinnedToCore( xVomitState, "Vomit State",  xVomitState_stack, NULL, 1,  &xVomitState_handle, 1 );
+  xTaskCreatePinnedToCore( xMasterCanProcess, "Master CAN Process",  xMasterCanProcess_stack, NULL, 1,  &xMasterCanProcess_handle, 1 );
 
   vTaskDelay(500 / portTICK_PERIOD_MS);
 

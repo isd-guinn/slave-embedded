@@ -107,71 +107,8 @@ bool SerialInterface::checkCheckSum( uint8_t* data, uint8_t size )
 
 };
 
-// bool SerialInterface::onRecievedCommand()
-// { 
-
-//   int avail = _serial_ptr->available();
-//   Serial.printf("Get avail %d \n", _serial_ptr->available());
-
-//   // If there is nothing in the hardware buffer
-//   if( avail == 0 ){
-//     Serial.println("Nothing");
-//     return false;
-//   }
-
-//   else if( !_is_packet){
-//     Serial.println("Not Packet");
-//     if (rxPush() ==_start_bit)
-//     { 
-//       _is_packet=true;
-//       _rx_buffer_ptr[0] = _start_bit;
-//       rxClear(true);
-//       Serial.println("Start bit get");
-//       return false;
-//     }
-
-//     Serial.println("Start bit not get");
-//     rxClear(false);
-//     return false;
-    
-//   }
-
-//   // If we know that there somthing sending in the middle of the packet
-//   else{
-//     // Target size of bytes for a packet is reached
-//     if(avail >= (_rx_packet_size - _rx_counter) || (_rx_packet_size - _rx_counter) <= 0)
-//     {
-//       Serial.println("Reached Desired Amount of bytes");
-//       //Recieve _rx_packet_size-1 bytes
-//       for(int i=0;_rx_counter == _rx_packet_size;i++)
-//       { 
-//         rxPush();
-//       }
-
-//       _is_packet = false;
-
-//       if(checkCheckSum( _rx_buffer_ptr, _rx_packet_size ) && _rx_buffer_ptr[_rx_packet_size-1] == _end_bit){
-//         Serial.println("GETTTTTTTTTTTTTTTTTT\nGETTTTTTTTTTTTTTTTTT\nGETTTTTTTTTTTTTTTTTT");
-//         return true;
-//       }
-
-//       // if not packet
-//       Serial.println("Not Package");
-//       rxClear(false);
-//       return false;
-//     }
-
-//     rxPush();
-//     Serial.printf("Not enough!!!!! %d \n", _serial_ptr->available());
-//     return false;
-//   }
-  
-//   return false;
-// }
-
 bool SerialInterface::onRecievedCommand(){
   int avail = _serial_ptr->available();
-  // if( _rx_counter >= _rx_packet_size)
   if(avail > 0 && !_is_packet){
     _rx_buffer_ptr[0] = _serial_ptr->read();
 
