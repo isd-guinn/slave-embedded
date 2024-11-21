@@ -11,6 +11,7 @@
 #include "WheelsControl.hpp"
 #include "SerialCommunication.hpp"
 #include "MasterSerialProtocol.hpp"
+#include "MasterCanProtocol.hpp"
 #include "isd-dev-pinout.hpp" //isd Dev board
 
 #define I2C1_SDA    4
@@ -38,7 +39,8 @@
 #define VACUUM_RES    12
 
 #define QUARTZ_FREQUENCY 8000000UL
-#define CAN_BAUDRATE 500000
+#define CAN_BAUDRATE 100000
+#define CAN_DATA_LENGTH 8
 
 /*////////////////////////////////////////////////////////////////
     Global Variable/ Robot State Setup
@@ -91,6 +93,14 @@ struct RobotState{
   float probe_tar_angle_right_origin;
 
   };
+
+struct CANMsg{
+  int id;
+  uint8_t data[CAN_DATA_LENGTH];
+};
+
+struct CANMsg buf;
+QueueHandle_t xCANqueue;
 
 struct RobotState rs{
 
@@ -168,10 +178,20 @@ void xVomitState( void* pv );
 uint32_t xVomitState_stack = 10000;
 TaskHandle_t xVomitState_handle = NULL;
 
-/*    MasterCanProcess || Core 1   */
+/*    MasterCanProcess || Core 0   */
 void xMasterCanProcess( void* pv );
-uint32_t xMasterCanProcess_stack = 20000;
+uint32_t xMasterCanProcess_stack = 10000;
 TaskHandle_t xMasterCanProcess_handle = NULL;
+
+/*    MasterCanSend || Core 0   */
+void xMasterCanSend( void* pv );
+uint32_t xMasterCanSend_stack = 10000;
+TaskHandle_t xMasterCanSend_handle = NULL;
+
+/*    xControlPanel || Core 1   */
+void xControlPanel( void* pv );
+uint32_t xControlPanel_stack = 10000;
+TaskHandle_t xControlPanel_handle = NULL;
 
 /*////////////////////////////////////////////////////////////////
 RTOS Tasks Definition
@@ -265,9 +285,9 @@ void xUpdateWheelbase( void* pv ){
 
     switch (rs.control_mode){
       case NULL_CONTROL:
-        wheelbase.stop();
-        wheelbase.wheelClockwise(0, 2.0f);
-        wheelbase.wheelAntiClockwise(1, 2.0f);
+        // wheelbase.stop();
+        wheelbase.wheelClockwise(0, 12.0f);
+        wheelbase.wheelAntiClockwise(1, 12.0f);
         break;
       
       case SPEED_CONTROL:
@@ -364,19 +384,93 @@ void xVomitState( void* pv ){
 }
 
 void xMasterCanProcess( void* pv ){
-  for( ; ; ){
-    Serial.print("Sending packet ... ");
-    Serial.print("begin? ");
-    Serial.print(mcp.beginPacket(0x12));
-    mcp.write('h');
-    mcp.write('e');
-    mcp.write('l');
-    mcp.write('l');
-    mcp.write('o');
-    Serial.print(" end? ");
-    Serial.print(mcp.endPacket());
 
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+  struct CANMsg* pbuf;
+  xCANqueue = xQueueCreate( 5, sizeof(struct CANMsg*));
+  if( xCANqueue == 0 ){
+     // Failed to create the queue.
+      Serial.println("wtf brooop");
+  }
+
+  for( ; ; ){
+
+    // Try to Parse Packet
+    int size = mcp.parsePacket();
+
+    // Packet Recieved
+    if(size){
+
+      // Get ID
+      buf.id = mcp.packetId();
+
+      // Get Date. Drain the data if overflow;
+      for(int i=0; mcp.available(); i++) {
+        if (i<8){
+          buf.data[i] = mcp.read();
+        }
+        else mcp.read();
+      }
+
+      pbuf=&buf;
+      xQueueSend( xCANqueue, (void *) &pbuf, ( TickType_t ) 0 );
+    }
+
+    vTaskDelay(2 / portTICK_PERIOD_MS);
+  }
+}
+
+void xMasterCanSend( void* pv ){
+  for( ; ; ){
+
+    struct CANMsg msg1 = { ID_IMU_ACC_XY, {0,0,0,0,    0,0,0,0} };
+    struct CANMsg msg2 = { ID_IMU_QUAT_ZW, {1,1,1,1, 1,1,1,1} };
+
+    mcp.beginPacket(msg1.id);
+    for(int i=0;i<CAN_DATA_LENGTH;i++){
+      mcp.write(msg1.data[i]);
+      }
+    mcp.endPacket();
+    // Serial.printf("Sucess? %d\n",mcp.endPacket());
+
+
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+
+    mcp.beginPacket(msg2.id);
+    for(int i=0;i<CAN_DATA_LENGTH;i++){
+      mcp.write(msg2.data[i]);
+      }
+    mcp.endPacket();
+    // Serial.printf("Sucess? %d\n",mcp.endPacket());
+
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+    
+  }
+}
+
+void xControlPanel( void* pv ){
+
+  struct CANMsg* pkt;
+
+  for ( ; ; ){
+
+
+    // Receive a message on the created queue.  Block for 10 ticks if a
+    // message is not immediately available.
+    if( xQueueReceive( xCANqueue, &(pkt), ( TickType_t ) 10) ){
+        // pcRxedMessage now points to the struct AMessage variable posted
+        // by vATask.
+
+      Serial.printf("Packet ID 0x%x: ",pkt->id);
+      for(int i=0;i<CAN_DATA_LENGTH;i++){
+        Serial.printf("%x ",pkt->data[i]);
+      }
+      Serial.printf("To Float: %f, %f",ByteUtil::reconFloat(pkt->data,0),ByteUtil::reconFloat(pkt->data,4));
+      Serial.println();
+
+    }
+      
+
+    vTaskDelay(10 / portTICK_PERIOD_MS);
   }
 }
 
@@ -556,7 +650,11 @@ void setup()
   xTaskCreatePinnedToCore( xBlinking, "Blinking", xBlinking_stack,  NULL, 1,  &xBlinking_handle, 1 );
   // xTaskCreatePinnedToCore( xEchoBuffer, "Echo Buffer", xEchoBuffer_stack,  NULL, 1,  &xEchoBuffer_handle, 1 );
   // xTaskCreatePinnedToCore( xVomitState, "Vomit State",  xVomitState_stack, NULL, 1,  &xVomitState_handle, 1 );
-  xTaskCreatePinnedToCore( xMasterCanProcess, "Master CAN Process",  xMasterCanProcess_stack, NULL, 1,  &xMasterCanProcess_handle, 1 );
+  xTaskCreatePinnedToCore( xMasterCanProcess, "Master CAN Process",  xMasterCanProcess_stack, NULL, 1,  &xMasterCanProcess_handle, 0 );
+  xTaskCreatePinnedToCore( xMasterCanSend, "Master CAN Send",  xMasterCanSend_stack, NULL, 1,  &xMasterCanSend_handle, 0 );
+  xTaskCreatePinnedToCore( xControlPanel, "Control Panel",  xControlPanel_stack, NULL, 1,  &xControlPanel_handle, 1 );
+
+
 
   vTaskDelay(500 / portTICK_PERIOD_MS);
 
