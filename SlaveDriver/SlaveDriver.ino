@@ -5,19 +5,14 @@
   ISD Dev board will be used
 */
 
-#include <SimpleFOC.h>
 #include <Adafruit_MCP2515.h>
 
 #include "WheelsControl.hpp"
-#include "SerialCommunication.hpp"
-#include "MasterSerialProtocol.hpp"
 #include "MasterCanProtocol.hpp"
 #include "isd-dev-pinout.hpp" //isd Dev board
 
-#define I2C1_SDA    4
-#define I2C1_SCK    5    
-#define I2C2_SDA    7    
-#define I2C2_SCK    6  
+#include "REG.h"
+#include "wit_c_sdk.h"
 
 #define LEFTWHEELS_IN1    36
 #define LEFTWHEELS_IN2    35
@@ -26,18 +21,22 @@
 #define LEFTWHEELS_EN     11
 #define RIGHTWHEELS_EN    12
 
-#define BLDC1_IN1   21
-#define BLDC1_IN2   47
-#define BLDC1_IN3   48
-#define BLDC2_IN1   12
-#define BLDC2_IN2   13
-#define BLDC2_IN3   14
-
 #define VACUUM_PIN  40
-
 #define VACUUM_FREQ   50
 #define VACUUM_RES    12
 
+#define IMU_RX        42
+#define IMU_TX        41
+#define ACC_UPDATE		0x01
+#define GYRO_UPDATE		0x02
+#define ANGLE_UPDATE	0x04
+#define MAG_UPDATE		0x08
+#define READ_UPDATE		0x80
+
+#define CS_PIN      6
+#define MOSI_PIN    15
+#define MISO_PIN    16
+#define SCK_PIN     7
 #define QUARTZ_FREQUENCY 8000000UL
 #define CAN_BAUDRATE 100000
 #define CAN_DATA_LENGTH 8
@@ -50,23 +49,7 @@ const float hw_v_limit  = 22.0f;
 
 const int vacuum_duty = 329;
 
-TwoWire i2c1(1);
-TwoWire i2c2(2);
-
-BLDCMotor foc_motor_l = BLDCMotor(7,5.1f,220);
-BLDCMotor foc_motor_r = BLDCMotor(7,5.1f,220);
-
-BLDCDriver3PWM foc_driver_l = BLDCDriver3PWM(BLDC1_IN1, BLDC1_IN2, BLDC1_IN3);
-BLDCDriver3PWM foc_driver_r = BLDCDriver3PWM(BLDC2_IN1, BLDC2_IN2, BLDC2_IN3);
-
-MagneticSensorI2C foc_sensor_l = MagneticSensorI2C(AS5600_I2C);
-MagneticSensorI2C foc_sensor_r = MagneticSensorI2C(AS5600_I2C);
-
-
-HardwareSerial MasterSerial(2);
-SerialInterface master(&MasterSerial, M2S_PACKET_SIZE, S2M_PACKET_SIZE, START_BIT, END_BIT);
 Wheelbase wheelbase( hw_v_supply, hw_v_supply, LEFTWHEELS_IN1, RIGHTWHEELS_IN1, LEFTWHEELS_IN2, RIGHTWHEELS_IN2, LEFTWHEELS_EN, RIGHTWHEELS_EN);
-
 
 Adafruit_MCP2515 mcp(CS_PIN,MOSI_PIN,MISO_PIN,SCK_PIN);
 
@@ -74,7 +57,6 @@ Adafruit_MCP2515 mcp(CS_PIN,MOSI_PIN,MISO_PIN,SCK_PIN);
 struct RobotState{
 
   bool v_estop;
-  control_mode_t control_mode;
   float speed_target;
   float speed_current;
   float angle_target;
@@ -82,17 +64,13 @@ struct RobotState{
   float angle_speed_target;
   float angular_speed_current;
   float vacuum_voltage;
-  bool foc_engaged;
-  action_t direction;
 
-  float probe_angle_left;
-  float probe_tar_angle_left;
-  float probe_tar_angle_left_origin;
-  float probe_angle_right;
-  float probe_tar_angle_right;
-  float probe_tar_angle_right_origin;
+  float acc[3];
+  float gyro[3];
+  float angle[3];
+};
 
-  };
+struct RobotState rs;
 
 struct CANMsg{
   int id;
@@ -102,51 +80,68 @@ struct CANMsg{
 struct CANMsg buf;
 QueueHandle_t xCANqueue;
 
-struct RobotState rs{
 
-  false, NULL_CONTROL, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, false, 
-
-  0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f 
-
-  };
-
-uint8_t local_pkt_m2s[M2S_PACKET_SIZE];
-uint8_t local_pkt_s2m[S2M_PACKET_SIZE];
+HardwareSerial ImuSerial(2);
+static volatile char s_cDataUpdate = 0;
 
 /*////////////////////////////////////////////////////////////////
     Helper Function
 ////////////////////////////////////////////////////////////////*/
 
-void vomitRxBuffer(){
-    for(int i=0;i<master.getRxPacketSize();i++)
-    {
-      Serial.print( master.getRxBufferPtr()[i] , HEX);
-      Serial.print(" ");
-      vTaskDelay(1);
+namespace ByteUtil{
+  inline float reconFloat(uint8_t *packet, uint8_t pos, bool isSmallEndian = true){
+    if (isSmallEndian){
+      uint8_t ctn[4] = {packet[pos+3], packet[pos+2], packet[pos+1], packet[pos]};
+      return *(float*)&ctn;
     }
-    Serial.print("| Size: ");
-    Serial.println( master.getRxCounter() );
-    vTaskDelay(1);
+    else{
+      uint8_t ctn[4] = {packet[pos], packet[pos+1], packet[pos+2], packet[pos+3]};
+      return *(float*)&ctn;
+    }              
+  }
 }
+
+// namespace IMU{
+  static void SensorUartSend(uint8_t *p_data, uint32_t uiSize)
+  {
+    ImuSerial.write(p_data, uiSize);
+    ImuSerial.flush();
+  }
+  static void Delayms(uint16_t ucMs)
+  {
+    vTaskDelay(ucMs / portTICK_PERIOD_MS);
+  }
+  static void SensorDataUpdata(uint32_t uiReg, uint32_t uiRegNum)
+  {
+    int i;
+      for(i = 0; i < uiRegNum; i++)
+      {
+        switch(uiReg)
+        {
+          case AZ:
+            s_cDataUpdate |= ACC_UPDATE;
+            break;
+          case GZ:
+            s_cDataUpdate |= GYRO_UPDATE;
+            break;
+          case HZ:
+            s_cDataUpdate |= MAG_UPDATE;
+            break;
+          case Yaw:
+            s_cDataUpdate |= ANGLE_UPDATE;
+            break;
+          default:
+            s_cDataUpdate |= READ_UPDATE;
+            break;
+        }
+        uiReg++;
+      }
+  }
+// }
 
 /*////////////////////////////////////////////////////////////////
     RTOS Tasks Setup
 ////////////////////////////////////////////////////////////////*/
-
-/*    Phrase Command || Core 0   */
-void xPhraseCommand( void* pv );
-uint32_t xPhraseCommand_stack = 10000;
-TaskHandle_t xPhraseCommand_handle = NULL;
-
-/*    Send Command || Core 0   */
-void xSendCommand( void* pv );
-uint32_t xSendCommand_stack = 10000;
-TaskHandle_t xSendCommand_handle = NULL;
-
-/*    Update State || Core 0   */
-void xUpdateState( void* pv );
-uint32_t xUpdateState_stack = 10000;
-TaskHandle_t xUpdateState_handle = NULL;
 
 /*    Vacuum || Core 1   */
 void xVacuum( void* pv );
@@ -158,20 +153,10 @@ void xUpdateWheelbase( void* pv );
 uint32_t xUpdateWheelbase_stack = 10000;
 TaskHandle_t xUpdateWheelbase_handle = NULL;
 
-/*    FOC routine || Core 0   */
-void xFOCroutine( void* pv );
-uint32_t xFOCroutine_stack = 10000;
-TaskHandle_t xFOCroutine_handle = NULL;
-
 /*    Blinking || Core 1   */
 void xBlinking( void* pv );
-uint32_t xBlinking_stack = 2048;
+uint32_t xBlinking_stack = 800;
 TaskHandle_t xBlinking_handle = NULL;
-
-/*    Echo Buffer || Core 1   */
-void xEchoBuffer( void* pv );
-uint32_t xEchoBuffer_stack = 2048;
-TaskHandle_t xEchoBuffer_handle = NULL;
 
 /*    VomitState || Core 1   */
 void xVomitState( void* pv );
@@ -179,95 +164,31 @@ uint32_t xVomitState_stack = 10000;
 TaskHandle_t xVomitState_handle = NULL;
 
 /*    MasterCanProcess || Core 0   */
-void xMasterCanProcess( void* pv );
-uint32_t xMasterCanProcess_stack = 10000;
-TaskHandle_t xMasterCanProcess_handle = NULL;
+void xCanProcess( void* pv );
+uint32_t xCanProcess_stack = 10000;
+TaskHandle_t xCanProcess_handle = NULL;
 
 /*    MasterCanSend || Core 0   */
-void xMasterCanSend( void* pv );
-uint32_t xMasterCanSend_stack = 10000;
-TaskHandle_t xMasterCanSend_handle = NULL;
+void xCanSend( void* pv );
+uint32_t xCanSend_stack = 10000;
+TaskHandle_t xCanSend_handle = NULL;
 
 /*    xControlPanel || Core 1   */
 void xControlPanel( void* pv );
 uint32_t xControlPanel_stack = 10000;
 TaskHandle_t xControlPanel_handle = NULL;
 
+/*    xImuProcess || Core 0   */
+void xImuProcess( void* pv );
+uint32_t xImuProcess_stack = 35000;
+TaskHandle_t xImuProcess_handle = NULL;
+
+/*    Stack Monitor || Core 1   */
+void xStackMonitor( void* pv );
+
 /*////////////////////////////////////////////////////////////////
 RTOS Tasks Definition
 ////////////////////////////////////////////////////////////////*/
-
-/*  Phrase the command packet to either update the state or do a certain task. */
-void xPhraseCommand( void* pv ){
-
-  MasterSerial.flush();
-
-  for( ; ; ){
-
-
-    if ( master.onRecievedCommand() ){
-      for(int i=0;i<M2S_PACKET_SIZE;i++) {
-        local_pkt_m2s[i] = master.getRxBufferPtr()[i];
-      }
-
-      Serial.println("Triggered!!!!!!!!!!!!!");
-      // vomitRxBuffer();
-
-      master.rxClear(false);
-    }
-    vTaskDelay( 2 / portTICK_PERIOD_MS );
-
-  }
-
-}
-
-void xSendCommand( void* pv ){
-
-  for( ; ; ){
-
-    master.txPush(START_BIT);           // 00  |   StartBit
-    master.txPush(DEBUG_);              // 01  |   DebugCode
-
-    master.txPush( EXTRACT_BYTE_FROM_4BYTE_VALUE(rs.probe_angle_left,0) ); // 02  |   LeftFOCAngle   (1st Byte)
-    master.txPush( EXTRACT_BYTE_FROM_4BYTE_VALUE(rs.probe_angle_left,1) );
-    master.txPush( EXTRACT_BYTE_FROM_4BYTE_VALUE(rs.probe_angle_left,2) );
-    master.txPush( EXTRACT_BYTE_FROM_4BYTE_VALUE(rs.probe_angle_left,3) );
-
-    master.txPush( EXTRACT_BYTE_FROM_4BYTE_VALUE(rs.probe_angle_right,0) );   // 06  |   RightFOCAngle   (1st Byte)
-    master.txPush( EXTRACT_BYTE_FROM_4BYTE_VALUE(rs.probe_angle_right,1) );
-    master.txPush( EXTRACT_BYTE_FROM_4BYTE_VALUE(rs.probe_angle_right,2) );
-    master.txPush( EXTRACT_BYTE_FROM_4BYTE_VALUE(rs.probe_angle_right,3) );
-    
-    master.txPush(master.getCheckSum(master.getTxBufferPtr(),master.getTxPacketSize())); // 10  |   CheckSum
-    master.txPush(END_BIT); // 11  |   endbit
-
-    master.txSend();
-    master.txClear(false);
-
-    vTaskDelay( 70 / portTICK_PERIOD_MS );
-  }
-
-}
-
-void xUpdateState( void* pv ){
-
-  for ( ; ; ){
-      rs.v_estop              = (local_pkt_m2s[BYTE_POS_M2S_VESTOP] == V_ESTOP_EN_CODE)? true:false;
-      rs.control_mode         = local_pkt_m2s[BYTE_POS_M2S_CONTROLMODE];
-      rs.speed_target         = ByteUtil::reconFloat( local_pkt_m2s, BYTE_POS_M2S_TARGETSPEED );
-      rs.speed_current        = ByteUtil::reconFloat( local_pkt_m2s, BYTE_POS_M2S_CURRENTSPEED );
-      rs.angle_target         = ByteUtil::reconFloat( local_pkt_m2s, BYTE_POS_M2S_TARGETANGLE );
-      rs.angle_current        = ByteUtil::reconFloat( local_pkt_m2s, BYTE_POS_M2S_CURRENTANGLE );
-      rs.angle_speed_target   = ByteUtil::reconFloat( local_pkt_m2s, BYTE_POS_M2S_TARANGSPEED );
-      rs.angular_speed_current= ByteUtil::reconFloat( local_pkt_m2s, BYTE_POS_M2S_CURANGSPEED );
-      rs.vacuum_voltage       = ByteUtil::reconFloat( local_pkt_m2s, BYTE_POS_M2S_VACUUMVOLTAGE );
-      rs.foc_engaged = (local_pkt_m2s[BYTE_POS_M2S_FOCMODE] == FOC_EN_CODE)? true:false;
-      //Serial.printf("LEFT !!!!!: %f\tRIGHT !!!!!: %f\n", rs.speed_target, rs.angle_target);
-      // MasterSerial.printf("Target Speed: %f\n", rs.speed_target);
-      vTaskDelay( 100 / portTICK_PERIOD_MS );
-  }
-
-}
 
 void xVacuum( void* pv ){ 
 
@@ -283,59 +204,24 @@ void xUpdateWheelbase( void* pv ){
 
   for( ; ; ){ 
 
-    switch (rs.control_mode){
-      case NULL_CONTROL:
-        // wheelbase.stop();
-        wheelbase.wheelClockwise(0, 12.0f);
-        wheelbase.wheelAntiClockwise(1, 12.0f);
-        break;
-      
-      case SPEED_CONTROL:
-        if (rs.speed_target > 0) wheelbase.foward(rs.speed_target);
-        else if (rs.speed_target < 0) wheelbase.backward(rs.speed_target);
-        else wheelbase.stop();
-        break;
-      
-      case ANGLE_CONTROL:
-        break;
 
-      case MANUAL_CONTROL:
-        // Serial.printf("Left Wheel: %f\tRight Wheel: %f\n", rs.speed_target, rs.angle_target);
+    if(rs.speed_target<1.0f && rs.speed_target>-1.0f) \
+      wheelbase.wheelStop(0);
+    if(rs.angle_target<1.0f && rs.angle_target>-1.0f) \
+      wheelbase.wheelStop(1);
+    if(rs.speed_target > 0) \ 
+      wheelbase.wheelClockwise(0, rs.speed_target);
+    else \ 
+      wheelbase.wheelAntiClockwise(0, -rs.speed_target);
+    if(rs.angle_target > 0) \ 
+      wheelbase.wheelAntiClockwise(1, rs.angle_target);
+    else \ 
+      wheelbase.wheelClockwise(1, -rs.angle_target);
 
-        // wheelbase.wheelClockwise(0, 2.0f);
-        // wheelbase.wheelAntiClockwise(1, 2.0f);
-
-        if(rs.speed_target<1.0f && rs.speed_target>-1.0f)wheelbase.wheelStop(0);
-        if(rs.angle_target<1.0f && rs.angle_target>-1.0f)wheelbase.wheelStop(1);
-        if(rs.speed_target > 0) wheelbase.wheelClockwise(0, rs.speed_target);
-        else wheelbase.wheelAntiClockwise(0, -rs.speed_target);
-        if(rs.angle_target > 0) wheelbase.wheelAntiClockwise(1, rs.angle_target);
-        else wheelbase.wheelClockwise(1, -rs.angle_target);
-        break;
-
-      default:
-        break;
-    }
     
     vTaskDelay(500 / portTICK_PERIOD_MS);
   }
 
-}
-
-void xFOCroutine( void* pv ){
-  for( ; ; ){
-    foc_motor_l.loopFOC();
-    foc_motor_l.move(rs.probe_tar_angle_left);
-    rs.probe_angle_left = foc_motor_l.shaftAngle();
-
-    foc_motor_r.loopFOC();
-    foc_motor_r.move(rs.probe_tar_angle_right);
-    rs.probe_angle_right = foc_motor_r.shaftAngle();
-
-    // Serial.printf("%f %f\n",foc_motor_l.shaftAngle(),foc_motor_r.shaftAngle());
-
-    vTaskDelay(2);
-  }
 }
 
 /*  Blinking  */
@@ -351,39 +237,34 @@ void xBlinking( void* pv ){
   
 }
 
-void xEchoBuffer( void* pv ){
-
-  for( ; ; ){
-    vomitRxBuffer();
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
-  }
-
-}
-
-void xVomitState( void* pv ){ 
+void xVomitState( void* pv ){
 
   for( ; ; )
   {
     Serial.println("----------------------------------------");
-    Serial.printf("v_estop: %x\n",                rs.v_estop);
-    Serial.printf("control_mode: %x\n",           rs.control_mode);
-    Serial.printf("speed_target: %f\n",           rs.speed_target);
-    Serial.printf("speed_current: %f\n",          rs.speed_current);
-    Serial.printf("angle_target: %f\n",           rs.angle_target);
-    Serial.printf("angle_current: %f\n",          rs.angle_current);
-    Serial.printf("angle_speed_target: %f\n",     rs.angle_speed_target);
-    Serial.printf("angular_speed_current: %f\n",  rs.angular_speed_current);
-    Serial.printf("vacuum_voltage: %f\n",         rs.vacuum_voltage);
-    // Serial.printf("foc_engaged: %x\n",            rs.foc_engaged);
-    // Serial.printf("foc_l: %f\n",            rs.probe_angle_left);
-    // Serial.printf("foc_r: %f\n",            rs.probe_angle_right);
+    // Serial.printf("v_estop: %x\n",                rs.v_estop);
+    // Serial.printf("speed_target: %f\n",           rs.speed_target);
+    // Serial.printf("speed_current: %f\n",          rs.speed_current);
+    // Serial.printf("angle_target: %f\n",           rs.angle_target);
+    // Serial.printf("angle_current: %f\n",          rs.angle_current);
+    // Serial.printf("angle_speed_target: %f\n",     rs.angle_speed_target);
+    // Serial.printf("angular_speed_current: %f\n",  rs.angular_speed_current);
+    // Serial.printf("vacuum_voltage: %f\n",         rs.vacuum_voltage);
+
+    Serial.printf("acc x:%f\t\ty:%f\t\tz:%f\n",         rs.acc[0],rs.acc[1],rs.acc[2]);
+    Serial.printf("gyro x:%f\t\ty:%f\t\tz:%f\n",        rs.gyro[0],rs.gyro[1],rs.gyro[2]);
+    Serial.printf("angle x:%f\t\ty:%f\t\tz:%f\n",        rs.angle[0],rs.angle[1],rs.angle[2]);
+
+
     Serial.println("----------------------------------------");
+
+
     
-    vTaskDelay(200 / portTICK_PERIOD_MS);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
   }
 }
 
-void xMasterCanProcess( void* pv ){
+void xCanProcess( void* pv ){
 
   struct CANMsg* pbuf;
   xCANqueue = xQueueCreate( 5, sizeof(struct CANMsg*));
@@ -419,7 +300,7 @@ void xMasterCanProcess( void* pv ){
   }
 }
 
-void xMasterCanSend( void* pv ){
+void xCanSend( void* pv ){
   for( ; ; ){
 
     struct CANMsg msg1 = { ID_IMU_ACC_XY, {0,0,0,0,    0,0,0,0} };
@@ -474,6 +355,68 @@ void xControlPanel( void* pv ){
   }
 }
 
+void xImuProcess( void* pv ){
+  int i;
+  for( ; ; ){
+
+    if (ImuSerial.available()){ 
+      WitSerialDataIn(ImuSerial.read());
+      vTaskDelay(1 / portTICK_PERIOD_MS);
+    }
+		else if(s_cDataUpdate){
+			for(i = 0; i < 3; i++){
+				rs.acc[i] = sReg[AX+i] / 32768.0f * 16.0f;
+				rs.gyro[i] = sReg[GX+i] / 32768.0f * 2000.0f;
+				rs.angle[i] = sReg[Roll+i] / 32768.0f * 180.0f;
+			}
+			if(s_cDataUpdate & ACC_UPDATE){
+				// Serial.print("acc:");
+				// Serial.print(rs.acc[0], 3);
+				// Serial.print(" ");
+				// Serial.print(rs.acc[1], 3);
+				// Serial.print(" ");
+				// Serial.print(rs.acc[2], 3);
+				// Serial.print("\r\n");
+				s_cDataUpdate &= ~ACC_UPDATE;
+			}
+			if(s_cDataUpdate & GYRO_UPDATE){
+				// Serial.print("gyro:");
+				// Serial.print(fGyro[0], 1);
+				// Serial.print(" ");
+				// Serial.print(fGyro[1], 1);
+				// Serial.print(" ");
+				// Serial.print(fGyro[2], 1);
+				// Serial.print("\r\n");
+				s_cDataUpdate &= ~GYRO_UPDATE;
+			}
+			if(s_cDataUpdate & ANGLE_UPDATE){
+				// Serial.print("angle:");
+				// Serial.print(fAngle[0], 3);
+				// Serial.print(" ");
+				// Serial.print(fAngle[1], 3);
+				// Serial.print(" ");
+				// Serial.print(fAngle[2], 3);
+				// Serial.print("\r\n");
+				s_cDataUpdate &= ~ANGLE_UPDATE;
+			}
+			if(s_cDataUpdate & MAG_UPDATE){
+				// Serial.print("mag:");
+				// Serial.print(sReg[HX]);
+				// Serial.print(" ");
+				// Serial.print(sReg[HY]);
+				// Serial.print(" ");
+				// Serial.print(sReg[HZ]);
+				// Serial.print("\r\n");
+				s_cDataUpdate &= ~MAG_UPDATE;
+			}
+      s_cDataUpdate = 0;
+      vTaskDelay(10 / portTICK_PERIOD_MS);
+		}
+
+    
+  }
+}
+
 /*////////////////////////////////////////////////////////////////
     Inits
 ////////////////////////////////////////////////////////////////*/
@@ -498,174 +441,66 @@ bool vacuum_init(){
   //Vacuum INIT End
 }
 
-bool master_serial_init(){
-  MasterSerial.setRxBufferSize(140);
-  MasterSerial.begin(115200, SERIAL_8N1, 42, 41); //ISD Dev board Serial2
-  return true;
-}
-
-bool master_can_init(){
-
-  Serial.println("Init");
-  mcp.setClockFrequency(QUARTZ_FREQUENCY);
-
-  while (!mcp.begin(CAN_BAUDRATE)) {
-    Serial.println("Error initializing MCP2515.");
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-  }
-
-  Serial.println("MCP2515 chip found");
-}
-
-bool foc_init(bool debug = true){
-  i2c1.begin( I2C1_SDA, I2C1_SCK, 400000UL );
-  i2c2.begin( I2C2_SDA, I2C2_SCK, 400000UL );
-  if(debug) SimpleFOCDebug::enable(&Serial);
-
-  foc_sensor_l.init(&i2c1);
-  foc_sensor_r.init(&i2c2);
-
-  foc_motor_l.linkSensor(&foc_sensor_l);
-  foc_motor_r.linkSensor(&foc_sensor_r);
-
-  foc_driver_l.voltage_power_supply = hw_v_supply;
-  foc_driver_l.voltage_limit = hw_v_limit;
-  foc_driver_r.voltage_power_supply = hw_v_supply;
-  foc_driver_r.voltage_limit = hw_v_limit;
-
-  if(!foc_driver_l.init()){
-    Serial.println("Driver 1 init failed!");
-    return false;
-  }
-
-  if(!foc_driver_r.init()){
-    Serial.println("Driver 2 init failed!");
-    return false;
-  }
-
-  foc_motor_l.linkDriver(&foc_driver_l);
-  foc_motor_r.linkDriver(&foc_driver_r);
-
-  foc_motor_l.voltage_limit = hw_v_limit;
-  foc_motor_l.foc_modulation = FOCModulationType::SpaceVectorPWM;
-  foc_motor_l.torque_controller = TorqueControlType::voltage;
-  foc_motor_l.controller = MotionControlType::angle;
-
-  foc_motor_r.voltage_limit = hw_v_limit;
-  foc_motor_r.foc_modulation = FOCModulationType::SpaceVectorPWM;
-  foc_motor_r.torque_controller = TorqueControlType::voltage;
-  foc_motor_r.controller = MotionControlType::angle;
-
-  foc_motor_l.PID_velocity.P = 1.20f;
-  foc_motor_l.PID_velocity.I = 0.00f;
-  foc_motor_l.PID_velocity.D = 0;
-
-  foc_motor_r.PID_velocity.P = 1.20f;
-  foc_motor_r.PID_velocity.I = 0.00f;
-  foc_motor_r.PID_velocity.D = 0;
-
-  foc_motor_l.LPF_velocity.Tf = 0.03f;
-  foc_motor_r.LPF_velocity.Tf = 0.03f;
-
-  foc_motor_l.P_angle.P = 20.0f;
-  foc_motor_l.P_angle.I = 0.00f;
-  foc_motor_l.P_angle.D = 0.02f;
-
-  foc_motor_r.P_angle.P = 25.0f;
-  foc_motor_r.P_angle.I = 0.00f;
-  foc_motor_r.P_angle.D = 0.005f;
-
-  // foc_motor_l.velocity_limit = 9.42f;
-  // foc_motor_r.velocity_limit = 9.42f;
-
-  foc_motor_l.voltage_limit = hw_v_limit; // Volts -  default driver.voltage_limit
-  foc_motor_r.voltage_limit = hw_v_limit; // Volts -  default driver.voltage_limit
-
-  foc_motor_l.useMonitoring(Serial);
-  foc_motor_r.useMonitoring(Serial);
-
-  if(!foc_motor_l.init()){
-    Serial.println("Motor init failed!");
-    return false;
-  }
-
-  if(!foc_motor_r.init()){
-    Serial.println("Motor init failed!");
-    return false;
-  }
-
-  while(!foc_motor_l.initFOC()){
-    Serial.println("FOC init failed!");
-  }
-
-  while(!foc_motor_r.initFOC()){
-    Serial.println("FOC init failed!");
-  }
-
-  rs.probe_tar_angle_left = -2.50f;
-  rs.probe_tar_angle_right = -3.30f;
-
-  return true;
-
-}
-
 /*////////////////////////////////////////////////////////////////
     Main Program
 ////////////////////////////////////////////////////////////////*/
 
 void setup() 
 {
-  // vTaskDelay(500 / portTICK_PERIOD_MS);
-
   Serial.begin(115200);
-  // master_serial_init();
-  // master_can_init();
+  Serial.println("Joyful Aqua Cleanr Slave -- BEGIN...");
 
-  Serial.println("Init");
-  mcp.setClockFrequency(QUARTZ_FREQUENCY);
+  // // CAN Init
+  // Serial.println("Init");
+  // mcp.setClockFrequency(QUARTZ_FREQUENCY);
+  // while (!mcp.begin(CAN_BAUDRATE)) {
+  //   Serial.println("Error initializing MCP2515.");
+  //   vTaskDelay(100 / portTICK_PERIOD_MS);
+  // }
+  // Serial.println("MCP2515 chip found");
 
-  while (!mcp.begin(CAN_BAUDRATE)) {
-    Serial.println("Error initializing MCP2515.");
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-  }
+  // IMU Init
+  ImuSerial.begin(9600, SERIAL_8N1, IMU_RX, IMU_TX); //ESP32S3
+  WitSetUartBaud(WIT_BAUD_9600);
+	WitInit(WIT_PROTOCOL_NORMAL, 0x50);
+	WitSerialWriteRegister(SensorUartSend);
+	WitRegisterCallBack(SensorDataUpdata);
+  WitDelayMsRegister(Delayms);
 
-  Serial.println("MCP2515 chip found");
+  // Serial.println("INIT\t||\START SETUP");
+  // wheelbase.init(false);
+  // wheelbase.stop();
 
-  Serial.println("INIT\t||\START SETUP");
-  wheelbase.init(false);
-  wheelbase.stop();
-
-  vacuum_init();
-  // while(!foc_init(true));
+  // vacuum_init();
   led_init();
 
   // !!!!!!!! Stuck at Here if failed
+  Serial.println("Joyful Aqua Cleanr Slave -- READY...");
 
-  // xTaskCreatePinnedToCore(  xPhraseCommand,   "Phrase Command",   xPhraseCommand_stack,NULL,3,&xPhraseCommand_handle,0 );
-  // xTaskCreatePinnedToCore(  xSendCommand,   "Send Command",   xSendCommand_stack,NULL,1,&xSendCommand_handle,1 );
-  // xTaskCreatePinnedToCore(  xUpdateState,   "Update State",   xUpdateState_stack,NULL,2,&xUpdateState_handle,1 );
   // xTaskCreatePinnedToCore(  xVacuum,    "Vacuum",   xVacuum_stack, NULL,1,&xVacuum_handle,1 );
-  xTaskCreatePinnedToCore(  xUpdateWheelbase, "UpdateWheelbase",  xUpdateWheelbase_stack, NULL, 1 , &xUpdateWheelbase_handle, 1 );
-  // xTaskCreatePinnedToCore( xFOCroutine, "FOC Routine",  xFOCroutine_stack,  NULL, 1,  &xFOCroutine_handle,  0 );
+  // xTaskCreatePinnedToCore(  xUpdateWheelbase, "UpdateWheelbase",  xUpdateWheelbase_stack, NULL, 1 , &xUpdateWheelbase_handle, 1 );
   xTaskCreatePinnedToCore( xBlinking, "Blinking", xBlinking_stack,  NULL, 1,  &xBlinking_handle, 1 );
-  // xTaskCreatePinnedToCore( xEchoBuffer, "Echo Buffer", xEchoBuffer_stack,  NULL, 1,  &xEchoBuffer_handle, 1 );
-  // xTaskCreatePinnedToCore( xVomitState, "Vomit State",  xVomitState_stack, NULL, 1,  &xVomitState_handle, 1 );
-  xTaskCreatePinnedToCore( xMasterCanProcess, "Master CAN Process",  xMasterCanProcess_stack, NULL, 1,  &xMasterCanProcess_handle, 0 );
-  xTaskCreatePinnedToCore( xMasterCanSend, "Master CAN Send",  xMasterCanSend_stack, NULL, 1,  &xMasterCanSend_handle, 0 );
-  xTaskCreatePinnedToCore( xControlPanel, "Control Panel",  xControlPanel_stack, NULL, 1,  &xControlPanel_handle, 1 );
+  xTaskCreatePinnedToCore( xVomitState, "Vomit State",  xVomitState_stack, NULL, 1,  &xVomitState_handle, 1 );
+  // xTaskCreatePinnedToCore( xCanProcess, "Master CAN Process",  xCanProcess_stack, NULL, 1,  &xCanProcess_handle, 0 );
+  // xTaskCreatePinnedToCore( xCanSend, "Master CAN Send",  xCanSend_stack, NULL, 1,  &xCanSend_handle, 0 );
+  // xTaskCreatePinnedToCore( xControlPanel, "Control Panel",  xControlPanel_stack, NULL, 1,  &xControlPanel_handle, 1 );
+  xTaskCreatePinnedToCore( xImuProcess, "IMU Process",  xImuProcess_stack, NULL, 1,  &xImuProcess_handle, 0 );
 
-
+  // xTaskCreatePinnedToCore( xStackMonitor, "Stack Monitor",  10000, NULL, 1,  &xImuProcess_handle, NULL );
 
   vTaskDelay(500 / portTICK_PERIOD_MS);
 
-  rs.probe_angle_left = 0.00f;
-  rs.probe_angle_right = 0.00f;
   rs.speed_target = 0.00f;
   rs.angle_target = 0.00f;
 
 }
 
-void loop(){
+void loop(){}
 
+void xStackMonitor( void* pv ){
+  for( ; ; ){
+    Serial.println(uxTaskGetStackHighWaterMark(xBlinking_handle));
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+  }
 }
 
