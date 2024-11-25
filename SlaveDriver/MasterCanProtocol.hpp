@@ -1,4 +1,3 @@
-
 #ifndef MASTER_CAN_PROTOCOL_HPP  
 #define MASTER_CAN_PROTOCOL_HPP
 
@@ -14,23 +13,23 @@
 #define CAN_FRAME_DLC 8
 
 /* FRAME ID - S2M */
-#define ID_IMU_ACC_XY      101 // 0x65
-#define ID_IMU_ACC_Z       102 // 0x66
+#define ID_IMU_ACC_XY      0x101
+#define ID_IMU_ACC_Z       0x102
 
-#define ID_IMU_ANGVEL_XY   103 // 0x67
-#define ID_IMU_ANGVEL_Z    104 // 0x68
+#define ID_IMU_ANGVEL_XY   0x103
+#define ID_IMU_ANGVEL_Z    0x104
 
-#define ID_IMU_ANG_XY      105 // 0x69
-#define ID_IMU_ANG_Z       106 // 0x6A
+#define ID_IMU_ANG_XY      0x105
+#define ID_IMU_ANG_Z       0x106
 
-#define ID_IMU_QUAT_XY     107 // 0x6B
-#define ID_IMU_QUAT_ZW     108 // 0x6C
+#define ID_IMU_QUAT_XY     0x107
+#define ID_IMU_QUAT_ZW     0x108
 
-#define ID_FOC             200 // 0xC8
+#define ID_FOC             0x200
 
 /* FRAME ID - M2S */
-#define ID_MOTOR_VOLTAGE   300 // 0x12C
-#define ID_ACTION          400 // 0x190
+#define ID_MOTOR_VOLTAGE   0x300
+#define ID_ACTION          0x400
 
 /*  Byte Position Macros - IMU DATA
 
@@ -75,6 +74,13 @@
   06  |   MotorVolt Right   (3rd Byte)
   07  |   MotorVolt Right   (4th Byte)
 */
+
+typedef uint8_t action_t;
+#define STOP              0x00
+#define FORWARD           0x01
+#define BACKWARD          0x02
+#define ANTI_CLOCKWISE    0x03
+#define CLOCKWISE         0x04
 
 /* IMU DATA BYTE */
 #define BYTE_POS_IMU_XZ 0
