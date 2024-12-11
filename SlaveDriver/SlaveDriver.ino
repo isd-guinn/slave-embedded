@@ -49,7 +49,6 @@ const float hw_v_limit  = 22.0f;
 
 const int vacuum_duty = 359;
 
-
 Wheelbase wheelbase( hw_v_supply, hw_v_supply, LEFTWHEELS_IN1, RIGHTWHEELS_IN1, LEFTWHEELS_IN2, RIGHTWHEELS_IN2, LEFTWHEELS_EN, RIGHTWHEELS_EN);
 
 Adafruit_MCP2515 mcp(CS_PIN,MOSI_PIN,MISO_PIN,SCK_PIN);
@@ -64,6 +63,8 @@ struct RobotState{
   float acc[3];
   float gyro[3];
   float angle[3];
+
+  float vac_on = false;
 };
 
 struct RobotState rs;
@@ -75,7 +76,6 @@ struct CANMsg{
 
 struct CANMsg buf;
 QueueHandle_t xCANqueue;
-
 
 HardwareSerial ImuSerial(2);
 static volatile char s_cDataUpdate = 0;
@@ -139,11 +139,6 @@ namespace IMU{
     RTOS Tasks Setup
 ////////////////////////////////////////////////////////////////*/
 
-/*    Vacuum || Core 1   */
-void xVacuum( void* pv );
-uint32_t xVacuum_stack = 2048;
-TaskHandle_t xVacuum_handle = NULL;
-
 /*    Blinking || Core 1   */
 void xBlinking( void* pv );
 uint32_t xBlinking_stack = 800;
@@ -171,7 +166,7 @@ TaskHandle_t xControlPanel_handle = NULL;
 
 /*    xImuProcess || Core 0   */
 void xImuProcess( void* pv );
-uint32_t xImuProcess_stack = 35000;
+uint32_t xImuProcess_stack = 50000;
 TaskHandle_t xImuProcess_handle = NULL;
 
 /*    Stack Monitor || Core 1   */
@@ -180,16 +175,6 @@ void xStackMonitor( void* pv );
 /*////////////////////////////////////////////////////////////////
 RTOS Tasks Definition
 ////////////////////////////////////////////////////////////////*/
-
-void xVacuum( void* pv ){ 
-
-  for( ; ; ){ 
-    // Serial.println("Set speed");
-    ledcWrite(VACUUM_PIN,vacuum_duty);
-    vTaskDelay(500 / portTICK_PERIOD_MS);
-  }
-
-}
 
 /*  Blinking  */
 void xBlinking( void* pv ){
@@ -232,7 +217,7 @@ void xCanProcess( void* pv ){
   xCANqueue = xQueueCreate( 5, sizeof(struct CANMsg*));
   if( xCANqueue == 0 ){
      // Failed to create the queue.
-      Serial.println("wtf broo");
+      Serial.println("Failed to create the queue.");
   }
 
   for( ; ; ){
@@ -242,7 +227,6 @@ void xCanProcess( void* pv ){
 
     // Packet Recieved
     if(size){
-
 
       // Get ID
       buf.id = mcp.packetId();
@@ -259,25 +243,36 @@ void xCanProcess( void* pv ){
       xQueueSend( xCANqueue, (void *) &pbuf, ( TickType_t ) 0 );
     }
 
-    vTaskDelay(10 / portTICK_PERIOD_MS);
+    vTaskDelay(20 / portTICK_PERIOD_MS);
   }
 }
 
 void xCanSend( void* pv ){
 
+  uint32_t* p_acc_x = (uint32_t*)&rs.acc[0];
+  uint32_t* p_acc_y = (uint32_t*)&rs.acc[1];
+  uint32_t* p_acc_z = (uint32_t*)&rs.acc[2];
+  uint32_t* p_gyro_x = (uint32_t*)&rs.gyro[0];
+  uint32_t* p_gyro_y = (uint32_t*)&rs.gyro[1];
+  uint32_t* p_gyro_z = (uint32_t*)&rs.gyro[2];
+  uint32_t* p_angle_x = (uint32_t*)&rs.angle[0];
+  uint32_t* p_angle_y = (uint32_t*)&rs.angle[1];
+  uint32_t* p_angle_z = (uint32_t*)&rs.angle[2];
+
   
   for( ; ; ){
 
+
     // ID_IMU_ACC_XY
     mcp.beginPacket(ID_IMU_ACC_XY);
-    mcp.write(*(uint32_t*)&rs.acc[0] >> 24);
-    mcp.write(*(uint32_t*)&rs.acc[0] >> 16);
-    mcp.write(*(uint32_t*)&rs.acc[0] >> 8);
-    mcp.write(*(uint32_t*)&rs.acc[0] & 0xff);
-    mcp.write(*(uint32_t*)&rs.acc[1] >> 24);
-    mcp.write(*(uint32_t*)&rs.acc[1] >> 16);
-    mcp.write(*(uint32_t*)&rs.acc[1] >> 8);
-    mcp.write(*(uint32_t*)&rs.acc[1] & 0xff);
+    mcp.write(*p_acc_x >> 24);
+    mcp.write(*p_acc_x >> 16);
+    mcp.write(*p_acc_x >> 8);
+    mcp.write(*p_acc_x & 0xff);
+    mcp.write(*p_acc_y >> 24);
+    mcp.write(*p_acc_y >> 16);
+    mcp.write(*p_acc_y >> 8);
+    mcp.write(*p_acc_y & 0xff);
     mcp.endPacket();
     // Serial.printf("Sucess? %d\n",mcp.endPacket());
 
@@ -285,10 +280,10 @@ void xCanSend( void* pv ){
 
     // ID_IMU_ACC_Z
     mcp.beginPacket(ID_IMU_ACC_Z);
-    mcp.write(*(uint32_t*)&rs.acc[2] >> 24);
-    mcp.write(*(uint32_t*)&rs.acc[2] >> 16);
-    mcp.write(*(uint32_t*)&rs.acc[2] >> 8);
-    mcp.write(*(uint32_t*)&rs.acc[2] & 0xff);
+    mcp.write(*p_acc_z >> 24);
+    mcp.write(*p_acc_z >> 16);
+    mcp.write(*p_acc_z >> 8);
+    mcp.write(*p_acc_z & 0xff);
     mcp.write(0);
     mcp.write(0);
     mcp.write(0);
@@ -300,14 +295,14 @@ void xCanSend( void* pv ){
 
     // ID_IMU_ANGVEL_XY
     mcp.beginPacket(ID_IMU_ANGVEL_XY);
-    mcp.write(*(uint32_t*)&rs.gyro[0] >> 24);
-    mcp.write(*(uint32_t*)&rs.gyro[0] >> 16);
-    mcp.write(*(uint32_t*)&rs.gyro[0] >> 8);
-    mcp.write(*(uint32_t*)&rs.gyro[0] & 0xff);
-    mcp.write(*(uint32_t*)&rs.gyro[1] >> 24);
-    mcp.write(*(uint32_t*)&rs.gyro[1] >> 16);
-    mcp.write(*(uint32_t*)&rs.gyro[1] >> 8);
-    mcp.write(*(uint32_t*)&rs.gyro[1] & 0xff);
+    mcp.write(*p_gyro_x >> 24);
+    mcp.write(*p_gyro_x >> 16);
+    mcp.write(*p_gyro_x >> 8);
+    mcp.write(*p_gyro_x & 0xff);
+    mcp.write(*p_gyro_y >> 24);
+    mcp.write(*p_gyro_y >> 16);
+    mcp.write(*p_gyro_y >> 8);
+    mcp.write(*p_gyro_y & 0xff);
     mcp.endPacket();
     // Serial.printf("Sucess? %d\n",mcp.endPacket());
 
@@ -315,10 +310,10 @@ void xCanSend( void* pv ){
 
     // ID_IMU_ANGVEL_Z
     mcp.beginPacket(ID_IMU_ANGVEL_Z);
-    mcp.write(*(uint32_t*)&rs.gyro[2] >> 24);
-    mcp.write(*(uint32_t*)&rs.gyro[2] >> 16);
-    mcp.write(*(uint32_t*)&rs.gyro[2] >> 8);
-    mcp.write(*(uint32_t*)&rs.gyro[2] & 0xff);
+    mcp.write(*p_gyro_z >> 24);
+    mcp.write(*p_gyro_z >> 16);
+    mcp.write(*p_gyro_z >> 8);
+    mcp.write(*p_gyro_z & 0xff);
     mcp.write(0);
     mcp.write(0);
     mcp.write(0);
@@ -330,14 +325,14 @@ void xCanSend( void* pv ){
 
     // ID_IMU_ANG_XY
     mcp.beginPacket(ID_IMU_ANG_XY);
-    mcp.write(*(uint32_t*)&rs.angle[0] >> 24);
-    mcp.write(*(uint32_t*)&rs.angle[0] >> 16);
-    mcp.write(*(uint32_t*)&rs.angle[0] >> 8);
-    mcp.write(*(uint32_t*)&rs.angle[0] & 0xff);
-    mcp.write(*(uint32_t*)&rs.angle[1] >> 24);
-    mcp.write(*(uint32_t*)&rs.angle[1] >> 16);
-    mcp.write(*(uint32_t*)&rs.angle[1] >> 8 );
-    mcp.write(*(uint32_t*)&rs.angle[1] & 0xff);
+    mcp.write(*p_angle_x >> 24);
+    mcp.write(*p_angle_x >> 16);
+    mcp.write(*p_angle_x >> 8);
+    mcp.write(*p_angle_x & 0xff);
+    mcp.write(*p_angle_y >> 24);
+    mcp.write(*p_angle_y >> 16);
+    mcp.write(*p_angle_y >> 8 );
+    mcp.write(*p_angle_y & 0xff);
     mcp.endPacket();
     // Serial.printf("Sucess? %d\n",mcp.endPacket());
 
@@ -345,10 +340,10 @@ void xCanSend( void* pv ){
 
     // ID_IMU_ANG_Z
     mcp.beginPacket(ID_IMU_ANG_Z);
-    mcp.write(*(uint32_t*)&rs.angle[2] >> 24);
-    mcp.write(*(uint32_t*)&rs.angle[2] >> 16);
-    mcp.write(*(uint32_t*)&rs.angle[2] >> 8);
-    mcp.write(*(uint32_t*)&rs.angle[2] & 0xff);
+    mcp.write(*p_angle_z >> 24);
+    mcp.write(*p_angle_z >> 16);
+    mcp.write(*p_angle_z >> 8);
+    mcp.write(*p_angle_z & 0xff);
     mcp.write(0);
     mcp.write(0);
     mcp.write(0);
@@ -366,6 +361,8 @@ void xControlPanel( void* pv ){
 
   for ( ; ; ){
 
+
+    // Update Commands
     if( xQueueReceive( xCANqueue, &(pkt), ( TickType_t ) 10) ){
 
       switch (pkt->id){
@@ -384,6 +381,7 @@ void xControlPanel( void* pv ){
 
     }
 
+    // Controls - Wheelbase
     switch (rs.action){
       //ignore for now
       // case STOP:
@@ -403,8 +401,14 @@ void xControlPanel( void* pv ){
 
         break;
     }
+
+    // Control - Vacuum
+    if (rs.vac_on) 
+      ledcWrite(VACUUM_PIN,vacuum_duty);
+    else
+      ledcWrite(VACUUM_PIN,false);
     
-    vTaskDelay(10 / portTICK_PERIOD_MS);
+    vTaskDelay(20 / portTICK_PERIOD_MS);
   }
 }
 
@@ -412,11 +416,10 @@ void xImuProcess( void* pv ){
   int i;
   for( ; ; ){
 
-    if (ImuSerial.available()){ 
+    while (ImuSerial.available()){ 
       WitSerialDataIn(ImuSerial.read());
-      vTaskDelay(1 / portTICK_PERIOD_MS);
     }
-		else if(s_cDataUpdate){
+		if(s_cDataUpdate){
 			for(i = 0; i < 3; i++){
 				rs.acc[i] = sReg[AX+i] / 32768.0f * 16.0f;
 				rs.gyro[i] = sReg[GX+i] / 32768.0f * 2000.0f;
@@ -435,37 +438,11 @@ void xImuProcess( void* pv ){
 				s_cDataUpdate &= ~MAG_UPDATE;
 			}
       s_cDataUpdate = 0;
-      vTaskDelay(10 / portTICK_PERIOD_MS);
+      
 		}
-
+    vTaskDelay(20 / portTICK_PERIOD_MS);
     
   }
-}
-
-/*////////////////////////////////////////////////////////////////
-    Inits
-////////////////////////////////////////////////////////////////*/
-
-bool led_init(){
-  // Serial.println("INIT\t||\tBlinking");
-  pinMode(LED_BUILTIN,OUTPUT);
-  digitalWrite(LED_BUILTIN,LOW);
-  // Serial.println("DONE\t||\tBlinking");
-  return true;
-}
-
-bool vacuum_init(){
-  //Vacuum INIT Begin
-
-  ledcAttach(VACUUM_PIN, 50, 12);
-  ledcWrite(VACUUM_PIN,0);
-  vTaskDelay(2000 / portTICK_PERIOD_MS);
-  ledcWrite(VACUUM_PIN,410);
-  vTaskDelay(2000 / portTICK_PERIOD_MS);
-  ledcWrite(VACUUM_PIN,308);
-  vTaskDelay(2000 / portTICK_PERIOD_MS);
-  return true;
-  //Vacuum INIT End
 }
 
 /*////////////////////////////////////////////////////////////////
@@ -493,18 +470,18 @@ void setup()
   Serial.println("Joyful Aqua Cleanr Slave -- BEGIN...");
 
   // CAN Init
-  Serial.println("CAN Init...");
-  mcp.setClockFrequency(QUARTZ_FREQUENCY);
-  while (!mcp.begin(CAN_BAUDRATE)) {
-    Serial.println("Error initializing MCP2515.");
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-  }
-  Serial.println("CAN Init... Done");
+  // Serial.println("CAN Init...");
+  // mcp.setClockFrequency(QUARTZ_FREQUENCY);
+  // while (!mcp.begin(CAN_BAUDRATE)) {
+  //   Serial.println("Error initializing MCP2515.");
+  //   vTaskDelay(100 / portTICK_PERIOD_MS);
+  // }
+  // Serial.println("CAN Init... Done");
 
   // IMU Init
   Serial.println("IMU Init...");
-  ImuSerial.begin(9600, SERIAL_8N1, IMU_RX, IMU_TX); //ESP32S3
-  WitSetUartBaud(WIT_BAUD_9600);
+  ImuSerial.begin(115200, SERIAL_8N1, IMU_RX, IMU_TX); //ESP32S3
+  WitSetUartBaud(WIT_BAUD_115200);
 	WitInit(WIT_PROTOCOL_NORMAL, 0x50);
 	WitSerialWriteRegister(IMU::SensorUartSend);
 	WitRegisterCallBack(IMU::SensorDataUpdata);
@@ -516,22 +493,30 @@ void setup()
   wheelbase.stop();
   Serial.println("Wheelbase Init... Done");
 
+  // Vacuum INIT
   Serial.println("Vacuum Init... ");
-  vacuum_init();
+  ledcAttach(VACUUM_PIN, 50, 12);
+  ledcWrite(VACUUM_PIN,0);
+  vTaskDelay(2000 / portTICK_PERIOD_MS);
+  ledcWrite(VACUUM_PIN,410);
+  vTaskDelay(2000 / portTICK_PERIOD_MS);
+  ledcWrite(VACUUM_PIN,308);
+  vTaskDelay(2000 / portTICK_PERIOD_MS);
   Serial.println("Vacuum Init... Done");
 
-  led_init();
+  //LED Init
+  pinMode(LED_BUILTIN,OUTPUT);
+  digitalWrite(LED_BUILTIN,LOW);
 
   // !!!!!!!! Stuck at Here if failed
   Serial.println("Joyful Aqua Cleanr Slave -- READY...");
 
-  xTaskCreatePinnedToCore(  xVacuum,    "Vacuum",   xVacuum_stack, NULL,1,&xVacuum_handle,1 );
-  xTaskCreatePinnedToCore( xBlinking, "Blinking", xBlinking_stack,  NULL, 1,  &xBlinking_handle, 1 );
+  // xTaskCreatePinnedToCore( xBlinking, "Blinking", xBlinking_stack,  NULL, 1,  &xBlinking_handle, 1 );
   xTaskCreatePinnedToCore( xVomitState, "Vomit State",  xVomitState_stack, NULL, 1,  &xVomitState_handle, 1 );
-  xTaskCreatePinnedToCore( xCanProcess, "Master CAN Process",  xCanProcess_stack, NULL, 2,  &xCanProcess_handle, 0 );
-  xTaskCreatePinnedToCore( xCanSend, "Master CAN Send",  xCanSend_stack, NULL, 1,  &xCanSend_handle, 0 );
-  xTaskCreatePinnedToCore( xControlPanel, "Control Panel",  xControlPanel_stack, NULL, 2,  &xControlPanel_handle, 1 );
-  xTaskCreatePinnedToCore( xImuProcess, "IMU Process",  xImuProcess_stack, NULL, 2,  &xImuProcess_handle, 0 );
+  // xTaskCreatePinnedToCore( xCanProcess, "Master CAN Process",  xCanProcess_stack, NULL, 2,  &xCanProcess_handle, 0 );
+  // xTaskCreatePinnedToCore( xCanSend, "Master CAN Send",  xCanSend_stack, NULL, 1,  &xCanSend_handle, 0 );
+  // xTaskCreatePinnedToCore( xControlPanel, "Control Panel",  xControlPanel_stack, NULL, 2,  &xControlPanel_handle, 1 );
+  xTaskCreatePinnedToCore( xImuProcess, "IMU Process",  xImuProcess_stack, NULL, 1,  &xImuProcess_handle, 1 );
 
   // xTaskCreatePinnedToCore( xStackMonitor, "Stack Monitor",  2000, NULL, 1,  &xImuProcess_handle, NULL );
 
