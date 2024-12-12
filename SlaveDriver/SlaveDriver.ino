@@ -9,10 +9,8 @@
 
 #include "WheelsControl.hpp"
 #include "MasterCanProtocol.hpp"
+#include "IMU.hpp"
 #include "isd-dev-pinout.hpp" //isd Dev board
-
-#include "REG.h"
-#include "wit_c_sdk.h"
 
 #define LEFTWHEELS_IN1    36
 #define LEFTWHEELS_IN2    35
@@ -27,11 +25,6 @@
 
 #define IMU_RX        42
 #define IMU_TX        41
-#define ACC_UPDATE		0x01
-#define GYRO_UPDATE		0x02
-#define ANGLE_UPDATE	0x04
-#define MAG_UPDATE		0x08
-#define READ_UPDATE		0x80
 
 #define CS_PIN      6
 #define MOSI_PIN    15
@@ -61,6 +54,7 @@ struct RobotState{
   float wheel_v_r;
 
   float acc[3];
+  float vel[3];
   float gyro[3];
   float angle[3];
 
@@ -78,7 +72,7 @@ struct CANMsg buf;
 QueueHandle_t xCANqueue;
 
 HardwareSerial ImuSerial(2);
-static volatile char s_cDataUpdate = 0;
+IMU imu(&ImuSerial, rs.acc, rs.vel, rs.gyro, rs.angle);
 
 /*////////////////////////////////////////////////////////////////
     Helper Function
@@ -97,43 +91,6 @@ namespace ByteUtil{
   }
 }
 
-namespace IMU{
-  static void SensorUartSend(uint8_t *p_data, uint32_t uiSize)
-  {
-    ImuSerial.write(p_data, uiSize);
-    ImuSerial.flush();
-  }
-  static void Delayms(uint16_t ucMs)
-  {
-    vTaskDelay(ucMs / portTICK_PERIOD_MS);
-  }
-  static void SensorDataUpdata(uint32_t uiReg, uint32_t uiRegNum)
-  {
-    int i;
-      for(i = 0; i < uiRegNum; i++)
-      {
-        switch(uiReg)
-        {
-          case AZ:
-            s_cDataUpdate |= ACC_UPDATE;
-            break;
-          case GZ:
-            s_cDataUpdate |= GYRO_UPDATE;
-            break;
-          case HZ:
-            s_cDataUpdate |= MAG_UPDATE;
-            break;
-          case Yaw:
-            s_cDataUpdate |= ANGLE_UPDATE;
-            break;
-          default:
-            s_cDataUpdate |= READ_UPDATE;
-            break;
-        }
-        uiReg++;
-      }
-  }
-}
 
 /*////////////////////////////////////////////////////////////////
     RTOS Tasks Setup
@@ -198,13 +155,15 @@ void xVomitState( void* pv ){
     Serial.printf("action: %x\n",             rs.action);
     Serial.printf("wheel_v_l: %f\n",          rs.wheel_v_l);
     Serial.printf("wheel_v_r: %f\n",          rs.wheel_v_r);
-    Serial.printf("acc x:%f\t\ty:%f\t\tz:%f\n",         rs.acc[0],rs.acc[1],rs.acc[2]);
-    Serial.printf("gyro x:%f\t\ty:%f\t\tz:%f\n",        rs.gyro[0],rs.gyro[1],rs.gyro[2]);
-    Serial.printf("angle x:%f\t\ty:%f\t\tz:%f\n",        rs.angle[0],rs.angle[1],rs.angle[2]);
+    Serial.printf("acc   x:%10.3f\t\ty:%10.3f\t\tz:%10.3f\n",        rs.acc[0],rs.acc[1],rs.acc[2]);
+    Serial.printf("vel   x:%10.3f\t\ty:%10.3f\t\tz:%10.3f\n",        rs.vel[0],rs.vel[1],rs.vel[2]);
+    Serial.printf("gyro  x:%10.3f\t\ty:%10.3f\t\tz:%10.3f\n",        rs.gyro[0],rs.gyro[1],rs.gyro[2]);
+    Serial.printf("angle x:%10.3f\t\ty:%10.3f\t\tz:%10.3f\n",        rs.angle[0],rs.angle[1],rs.angle[2]);
 
 
     Serial.println("----------------------------------------");
 
+    // Serial.printf("x:%.3f,y:%.3f,z:%.3f\n",        rs.acc[0],rs.acc[1],rs.acc[2]);
 
     
     vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -414,34 +373,12 @@ void xControlPanel( void* pv ){
 
 void xImuProcess( void* pv ){
   int i;
+  rs.vel[0] = 0;
+  rs.vel[1] = 0;
+  rs.vel[2] = 0;
   for( ; ; ){
-
-    while (ImuSerial.available()){ 
-      WitSerialDataIn(ImuSerial.read());
-    }
-		if(s_cDataUpdate){
-			for(i = 0; i < 3; i++){
-				rs.acc[i] = sReg[AX+i] / 32768.0f * 16.0f;
-				rs.gyro[i] = sReg[GX+i] / 32768.0f * 2000.0f;
-				rs.angle[i] = sReg[Roll+i] / 32768.0f * 180.0f;
-			}
-			if(s_cDataUpdate & ACC_UPDATE){
-				s_cDataUpdate &= ~ACC_UPDATE;
-			}
-			if(s_cDataUpdate & GYRO_UPDATE){
-				s_cDataUpdate &= ~GYRO_UPDATE;
-			}
-			if(s_cDataUpdate & ANGLE_UPDATE){
-				s_cDataUpdate &= ~ANGLE_UPDATE;
-			}
-			if(s_cDataUpdate & MAG_UPDATE){
-				s_cDataUpdate &= ~MAG_UPDATE;
-			}
-      s_cDataUpdate = 0;
-      
-		}
-    vTaskDelay(20 / portTICK_PERIOD_MS);
-    
+    imu.process();
+    vTaskDelay(10 / portTICK_PERIOD_MS);
   }
 }
 
@@ -481,11 +418,7 @@ void setup()
   // IMU Init
   Serial.println("IMU Init...");
   ImuSerial.begin(115200, SERIAL_8N1, IMU_RX, IMU_TX); //ESP32S3
-  WitSetUartBaud(WIT_BAUD_115200);
-	WitInit(WIT_PROTOCOL_NORMAL, 0x50);
-	WitSerialWriteRegister(IMU::SensorUartSend);
-	WitRegisterCallBack(IMU::SensorDataUpdata);
-  WitDelayMsRegister(IMU::Delayms);
+  imu.init();
   Serial.println("IMU Init... Done");
 
   Serial.println("Wheelbase Init... ");
@@ -520,11 +453,13 @@ void setup()
 
   // xTaskCreatePinnedToCore( xStackMonitor, "Stack Monitor",  2000, NULL, 1,  &xImuProcess_handle, NULL );
 
-  vTaskDelay(500 / portTICK_PERIOD_MS);
+  vTaskDelay(2000 / portTICK_PERIOD_MS);
 
   rs.wheel_v_l = 0.0f;
   rs.wheel_v_r = 0.0f;
-
+  rs.vel[0] = 0;
+  rs.vel[1] = 0;
+  rs.vel[2] = 0;
 
 }
 
