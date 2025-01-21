@@ -38,9 +38,13 @@ inline long Wheelbase::calDuty(float x, float min, float max, int res)
 
 void Wheelbase::wheelStop( uint8_t select )
 {
-  digitalWrite( _pin[select][2], LOW);
-  ledcWrite( _pin[select][0], 0);
-  ledcWrite( _pin[select][1], 0);
+  // digitalWrite( _pin[select][2], LOW);
+  // ledcWrite( _pin[select][0], 0);
+  // ledcWrite( _pin[select][1], 0);
+
+  digitalWrite( _pin[select][0], HIGH);
+  digitalWrite( _pin[select][1], HIGH);
+  ledcWrite( _pin[select][2], 0);
 
   if(_debug_mode) Serial.printf("DEBUG\t||\tWheel STOPPED: %s WHEEL\n",(select)?"RIGHT":"LEFT");
 }
@@ -49,9 +53,13 @@ void Wheelbase::wheelClockwise( uint8_t select, float v_target)
 {
   v_target = constrain(v_target, 0, _v_limit);
   long duty = calDuty(v_target, 0, _v_limit, PWM_RES);
-  ledcWrite( _pin[select][0], duty);
-  ledcWrite( _pin[select][1], 0);
-  digitalWrite( _pin[select][2], HIGH);
+  // ledcWrite( _pin[select][0], duty);
+  // ledcWrite( _pin[select][1], 0);
+  // digitalWrite( _pin[select][2], HIGH);
+
+  digitalWrite( _pin[select][0], HIGH);
+  digitalWrite( _pin[select][1], LOW);
+  ledcWrite( _pin[select][2], duty);
 
   if(_debug_mode) Serial.printf("DEBUG\t||\tWheel CLOCKWISE: %s WHEEL -- Voltage: %f -- Duty: %d\n",(select)?"RIGHT":"LEFT",v_target, duty);
 }
@@ -60,9 +68,13 @@ void Wheelbase::wheelAntiClockwise( uint8_t select, float v_target)
 {
   v_target = constrain(v_target, 0, _v_limit);
   long duty = calDuty(v_target, 0, _v_limit, PWM_RES);
-  ledcWrite( _pin[select][0], 0 );
-  ledcWrite( _pin[select][1], duty);
-  digitalWrite( _pin[select][2], HIGH);
+  // ledcWrite( _pin[select][0], 0 );
+  // ledcWrite( _pin[select][1], duty);
+  // digitalWrite( _pin[select][2], HIGH);
+
+  digitalWrite( _pin[select][0], LOW);
+  digitalWrite( _pin[select][1], HIGH);
+  ledcWrite( _pin[select][2], duty);
 
   if(_debug_mode) Serial.printf("DEBUG\t||\tWheel ANTICLOCKWISE: %s WHEEL -- Voltage: %f -- Duty: %d\n",(select)?"RIGHT":"LEFT",v_target, duty);
 }
@@ -127,46 +139,66 @@ bool Wheelbase::init(bool debug=false)
   for(int i=0;i<2;i++)
   { 
 
-    // INIT LOOP of PWM for IN1 pin
-    while( ledcAttach(_pin[i][0], 50, 12) == false )
-    { 
-      // Failed Conditions
-      if(_debug_mode) Serial.printf("ERROR\t||\t PIN%d Init Failed\n", _pin[i][0]);
+    // // INIT LOOP of PWM for IN1 pin
+    // while( ledcAttach(_pin[i][0], 50, 12) == false )
+    // { 
+    //   // Failed Conditions
+    //   if(_debug_mode) Serial.printf("ERROR\t||\t PIN%d Init Failed\n", _pin[i][0]);
 
-      // Break if timeout
-      if( (esp_timer_get_time() - last) > INIT_TIMEOUT)
-      {
-        if(_debug_mode) Serial.printf("ERROR\t||\t PIN%d Init TIMEOUT\n", _pin[i][0]);
-        ready = false;
-        break;
-      }
-      vTaskDelay(500 / portTICK_PERIOD_MS);
-    }
+    //   // Break if timeout
+    //   if( (esp_timer_get_time() - last) > INIT_TIMEOUT)
+    //   {
+    //     if(_debug_mode) Serial.printf("ERROR\t||\t PIN%d Init TIMEOUT\n", _pin[i][0]);
+    //     ready = false;
+    //     break;
+    //   }
+    //   vTaskDelay(500 / portTICK_PERIOD_MS);
+    // }
     
-    //update last time
-    last = esp_timer_get_time();
+    // //update last time
+    // last = esp_timer_get_time();
 
-    // INIT LOOP of PWM for IN2 pin
-    while( ledcAttach(_pin[i][1], 50, 12) == false )
+    // // INIT LOOP of PWM for IN2 pin
+    // while( ledcAttach(_pin[i][1], 50, 12) == false )
+    // {
+    //   // Failed Conditions
+    //   if(_debug_mode) Serial.printf("ERROR\t||\t PIN%d Init Failed\n", _pin[i][1]);
+
+    //   // Break if timeout
+    //   if( (esp_timer_get_time() - last) > INIT_TIMEOUT)
+    //   {
+    //     if(_debug_mode) Serial.printf("ERROR\t||\t PIN%d Init TIMEOUT\n", _pin[i][1]);
+    //     ready = false;
+    //     break;
+    //   }
+    //   vTaskDelay(500 / portTICK_PERIOD_MS);
+    // }
+
+    // INIT LOOP of PWM for EN pin
+    while( ledcAttach(_pin[i][2], 50, 12) == false )
     {
       // Failed Conditions
-      if(_debug_mode) Serial.printf("ERROR\t||\t PIN%d Init Failed\n", _pin[i][1]);
+      if(_debug_mode) Serial.printf("ERROR\t||\t PIN%d Init Failed\n", _pin[i][2]);
 
       // Break if timeout
       if( (esp_timer_get_time() - last) > INIT_TIMEOUT)
       {
-        if(_debug_mode) Serial.printf("ERROR\t||\t PIN%d Init TIMEOUT\n", _pin[i][1]);
+        if(_debug_mode) Serial.printf("ERROR\t||\t PIN%d Init TIMEOUT\n", _pin[i][2]);
         ready = false;
         break;
       }
-      vTaskDelay(500 / portTICK_PERIOD_MS);
+
+      vTaskDelay(100 / portTICK_PERIOD_MS);
     }
 
     //update last time
     last = esp_timer_get_time();
 
     // INIT for EN pin
-    pinMode(_pin[i][2], OUTPUT);
+    // pinMode(_pin[i][2], OUTPUT);
+
+    pinMode(_pin[i][0], OUTPUT);
+    pinMode(_pin[i][1], OUTPUT);
   }
 
   if(_debug_mode) Serial.println("DEBUG\t||\tWheelbase End Init");
